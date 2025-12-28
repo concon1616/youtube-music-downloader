@@ -2,6 +2,13 @@
 
 All notable changes to YouTube Downloader will be documented in this file.
 
+## [1.2.1] - 2025-12-28
+
+### Fixed
+- Audio clicking/noise on iPod caused by sample rate conversion issues
+- Added async resampling filter to smooth audio discontinuities
+- Explicit 44.1kHz sample rate for iPod compatibility
+
 ## [1.2.0] - 2025-12-28
 
 ### Added

@@ -613,6 +613,8 @@ ipcMain.handle('download-video', async (event, url, outputDir, ipodFormat = fals
               ...(hasThumb ? ['-c:v:1', 'mjpeg'] : []),
               '-c:a', 'aac',
               '-b:a', '128k',
+              '-ar', '44100',
+              '-af', 'aresample=async=1000',
               '-ac', '2',
               '-metadata', `title=${title}`,
               '-metadata', `artist=${artist}`,
@@ -662,6 +664,8 @@ ipcMain.handle('download-video', async (event, url, outputDir, ipodFormat = fals
               '-i', tempVideoPath,
               '-c:v', 'copy',
               '-c:a', 'aac',
+              '-ar', '44100',
+              '-af', 'aresample=async=1000',
               '-y',
               finalFile
             ];
@@ -819,6 +823,8 @@ ipcMain.handle('video-to-ipod', async (event, filePath, artist, title) => {
       '-crf', '23',
       '-c:a', 'aac',
       '-b:a', '128k',
+      '-ar', '44100',
+      '-af', 'aresample=async=1000',
       '-movflags', '+faststart',
       '-y',
       destPath
