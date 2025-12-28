@@ -1,7 +1,7 @@
 {
-  "name": "youtube-music-downloader",
-  "version": "1.0.0",
-  "description": "YouTube Music Downloader - Download music as high-quality M4A with artwork and metadata",
+  "name": "youtube-downloader",
+  "version": "1.1.0",
+  "description": "YouTube Downloader - Download as high-quality M4A or MP4",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
@@ -24,8 +24,8 @@
     "yt-dlp-wrap": "^2.3.12"
   },
   "build": {
-    "appId": "com.youtube-music-downloader",
-    "productName": "YouTube Music Downloader",
+    "appId": "com.youtube-downloader",
+    "productName": "YouTube Downloader",
     "mac": {
       "category": "public.app-category.music",
       "target": "dmg",

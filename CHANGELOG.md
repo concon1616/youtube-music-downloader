@@ -1,6 +1,17 @@
 # Changelog
 
-All notable changes to YouTube Music Downloader will be documented in this file.
+All notable changes to YouTube Downloader will be documented in this file.
+
+## [1.1.0] - 2024-12-28
+
+### Added
+- Video download support (MP4 format)
+- Format toggle to switch between Audio (M4A) and Video (MP4)
+- Best quality video with merged audio
+
+### Changed
+- Renamed app from "YouTube Music Downloader" to "YouTube Downloader"
+- Updated subtitle to reflect dual format support
 
 ## [1.0.0] - 2024-12-28
 

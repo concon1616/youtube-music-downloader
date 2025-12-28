@@ -338,3 +338,107 @@ function checkCommand(cmd) {
     });
   });
 }
+
+// Download a video as MP4
+ipcMain.handle('download-video', async (event, url, outputDir) => {
+  return new Promise((resolve, reject) => {
+    const ytdlp = getYtDlpPath();
+    const tempDir = path.join(app.getPath('temp'), 'ytvideo-' + Date.now());
+
+    fs.mkdirSync(tempDir, { recursive: true });
+
+    // First get full metadata
+    const infoArgs = [
+      '--dump-json',
+      '--no-warnings',
+      url
+    ];
+
+    let infoOutput = '';
+    const infoProcess = spawn(ytdlp, infoArgs);
+
+    infoProcess.stdout.on('data', (data) => {
+      infoOutput += data.toString();
+    });
+
+    infoProcess.on('close', async (infoCode) => {
+      if (infoCode !== 0) {
+        reject(new Error('Failed to get video info'));
+        return;
+      }
+
+      let info;
+      try {
+        info = JSON.parse(infoOutput);
+      } catch (e) {
+        reject(new Error('Failed to parse video info'));
+        return;
+      }
+
+      // Extract metadata
+      const title = info.title || 'Unknown Title';
+      const artist = info.artist || info.uploader || info.channel || 'Unknown Artist';
+
+      // Clean filename
+      const safeTitle = title.replace(/[<>:"/\\|?*]/g, '_').substring(0, 100);
+      const safeArtist = artist.replace(/[<>:"/\\|?*]/g, '_').substring(0, 50);
+
+      const finalFile = path.join(outputDir || downloadPath, `${safeArtist} - ${safeTitle}.mp4`);
+
+      // Download video with best quality
+      const downloadArgs = [
+        '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+        '--merge-output-format', 'mp4',
+        '-o', finalFile,
+        '--no-playlist',
+        '--progress',
+        url
+      ];
+
+      const downloadProcess = spawn(ytdlp, downloadArgs);
+
+      downloadProcess.stdout.on('data', (data) => {
+        const match = data.toString().match(/(\d+\.?\d*)%/);
+        if (match) {
+          mainWindow.webContents.send('download-progress', {
+            percent: parseFloat(match[1]),
+            title: title
+          });
+        }
+      });
+
+      downloadProcess.stderr.on('data', (data) => {
+        const match = data.toString().match(/(\d+\.?\d*)%/);
+        if (match) {
+          mainWindow.webContents.send('download-progress', {
+            percent: parseFloat(match[1]),
+            title: title
+          });
+        }
+      });
+
+      downloadProcess.on('close', async (downloadCode) => {
+        // Clean up temp dir
+        fs.rmSync(tempDir, { recursive: true, force: true });
+
+        if (downloadCode !== 0) {
+          reject(new Error('Failed to download video'));
+          return;
+        }
+
+        mainWindow.webContents.send('download-progress', {
+          percent: 100,
+          title: title,
+          status: 'Complete!'
+        });
+
+        resolve({
+          success: true,
+          file: finalFile,
+          title: title,
+          artist: artist
+        });
+      });
+    });
+  });
+});

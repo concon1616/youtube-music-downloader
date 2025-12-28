@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' https:;">
-  <title>YouTube Music Downloader</title>
+  <title>YouTube Downloader</title>
   <style>
     * {
       margin: 0;
@@ -330,12 +330,47 @@
       background: rgba(255, 255, 255, 0.2);
       border-radius: 3px;
     }
+
+    .format-toggle {
+      display: flex;
+      gap: 0;
+      margin-bottom: 20px;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 10px;
+      padding: 4px;
+    }
+
+    .format-btn {
+      flex: 1;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: transparent;
+      color: #8892b0;
+    }
+
+    .format-btn:hover {
+      color: #fff;
+    }
+
+    .format-btn.active {
+      background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+      color: #fff;
+    }
+
+    .format-btn.active.video {
+      background: linear-gradient(135deg, #ff6b6b 0%, #feca57 100%);
+    }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>YouTube Music Downloader</h1>
-    <p class="subtitle">Download music as high-quality M4A with artwork & metadata</p>
+    <h1>YouTube Downloader</h1>
+    <p class="subtitle">Download as high-quality M4A or MP4</p>
 
     <div id="dependencyWarning" class="status warning" style="display: none;">
       Missing dependencies. Please install yt-dlp and ffmpeg:<br>
@@ -345,6 +380,11 @@
     <div class="input-group">
       <input type="text" id="urlInput" class="url-input" placeholder="Paste YouTube URL (video or playlist)..." />
       <button id="downloadBtn" class="btn btn-primary">Download</button>
+    </div>
+
+    <div class="format-toggle">
+      <button id="formatAudio" class="format-btn active">Audio (M4A)</button>
+      <button id="formatVideo" class="format-btn">Video (MP4)</button>
     </div>
 
     <div class="settings-row">
@@ -389,11 +429,28 @@
     const completedSection = document.getElementById('completedSection');
     const completedList = document.getElementById('completedList');
     const dependencyWarning = document.getElementById('dependencyWarning');
+    const formatAudio = document.getElementById('formatAudio');
+    const formatVideo = document.getElementById('formatVideo');
 
     let isDownloading = false;
     let queue = [];
     let completed = [];
     let currentDownloadPath = '';
+    let currentFormat = 'audio'; // 'audio' or 'video'
+
+    // Format toggle
+    formatAudio.addEventListener('click', () => {
+      currentFormat = 'audio';
+      formatAudio.classList.add('active');
+      formatAudio.classList.remove('video');
+      formatVideo.classList.remove('active');
+    });
+
+    formatVideo.addEventListener('click', () => {
+      currentFormat = 'video';
+      formatVideo.classList.add('active', 'video');
+      formatAudio.classList.remove('active');
+    });
 
     // Initialize
     async function init() {
@@ -495,7 +552,9 @@
           progressFill.style.width = '0%';
           progressTitle.textContent = `Downloading: ${item.title}`;
 
-          const result = await window.api.downloadTrack(item.url, currentDownloadPath);
+          const result = currentFormat === 'video'
+            ? await window.api.downloadVideo(item.url, currentDownloadPath)
+            : await window.api.downloadTrack(item.url, currentDownloadPath);
           item.status = 'done';
 
           completed.push({
@@ -522,11 +581,13 @@
 
       const successCount = queue.filter(i => i.status === 'done').length;
       const errorCount = queue.filter(i => i.status === 'error').length;
+      const itemType = currentFormat === 'video' ? 'video' : 'track';
+      const itemTypePlural = currentFormat === 'video' ? 'videos' : 'tracks';
 
       if (errorCount === 0) {
-        showStatus(`Successfully downloaded ${successCount} track${successCount > 1 ? 's' : ''}!`, 'success');
+        showStatus(`Successfully downloaded ${successCount} ${successCount > 1 ? itemTypePlural : itemType}!`, 'success');
       } else {
-        showStatus(`Downloaded ${successCount} track${successCount > 1 ? 's' : ''}, ${errorCount} failed`, 'warning');
+        showStatus(`Downloaded ${successCount} ${successCount > 1 ? itemTypePlural : itemType}, ${errorCount} failed`, 'warning');
       }
 
       setTimeout(() => {
