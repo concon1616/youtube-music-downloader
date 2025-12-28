@@ -5,6 +5,14 @@ const { spawn } = require('child_process');
 const https = require('https');
 const http = require('http');
 
+// Debug logging to file
+const logFile = '/tmp/ytdownloader-debug.log';
+function debugLog(msg) {
+  const timestamp = new Date().toISOString();
+  fs.appendFileSync(logFile, `[${timestamp}] ${msg}\n`);
+  console.log(msg);
+}
+
 let mainWindow;
 let downloadPath = app.getPath('downloads');
 
@@ -152,6 +160,12 @@ ipcMain.handle('download-track', async (event, url, outputDir) => {
     const ffmpeg = getFfmpegPath();
     const tempDir = path.join(app.getPath('temp'), 'ytmusic-' + Date.now());
 
+    debugLog('=== DOWNLOAD TRACK DEBUG ===');
+    debugLog('yt-dlp path: ' + ytdlp);
+    debugLog('ffmpeg path: ' + ffmpeg);
+    debugLog('temp dir: ' + tempDir);
+    debugLog('output dir: ' + outputDir);
+
     fs.mkdirSync(tempDir, { recursive: true });
 
     // First get full metadata
@@ -241,6 +255,17 @@ ipcMain.handle('download-track', async (event, url, outputDir) => {
       });
 
       downloadProcess.on('close', async (downloadCode) => {
+        debugLog('Download process closed with code: ' + downloadCode);
+        debugLog('Download stderr: ' + dlError);
+
+        // List temp directory contents
+        const tempFiles = fs.readdirSync(tempDir);
+        debugLog('Temp dir contents: ' + JSON.stringify(tempFiles));
+        tempFiles.forEach(f => {
+          const stats = fs.statSync(path.join(tempDir, f));
+          debugLog(`  ${f}: ${stats.size} bytes`);
+        });
+
         if (downloadCode !== 0) {
           fs.rmSync(tempDir, { recursive: true, force: true });
           reject(new Error('Failed to download audio: ' + dlError));
@@ -276,34 +301,84 @@ ipcMain.handle('download-track', async (event, url, outputDir) => {
           }
         }
 
-        // Use ffmpeg to add metadata and optionally artwork
-        // Use copy codec to avoid re-encoding
-        const ffmpegArgs = [
-          '-i', tempAudio,
-          ...(hasThumb ? ['-i', tempThumb] : []),
-          '-map', '0:a',
-          ...(hasThumb ? ['-map', '1:0', '-c:v', 'copy', '-disposition:v', 'attached_pic'] : []),
-          '-c:a', 'copy',
-          '-metadata', `title=${title}`,
-          '-metadata', `artist=${artist}`,
-          '-metadata', `album=${album}`,
-          '-y',
-          finalFile
-        ];
+        // Use ffmpeg to add metadata and artwork
+        let ffmpegArgs;
+        if (hasThumb) {
+          // For m4a with artwork, need specific format
+          ffmpegArgs = [
+            '-i', tempAudio,
+            '-i', tempThumb,
+            '-map', '0:a',
+            '-map', '1:v',
+            '-c:a', 'copy',
+            '-c:v', 'mjpeg',
+            '-disposition:v:0', 'attached_pic',
+            '-metadata', `title=${title}`,
+            '-metadata', `artist=${artist}`,
+            '-metadata', `album=${album}`,
+            '-y',
+            finalFile
+          ];
+        } else {
+          ffmpegArgs = [
+            '-i', tempAudio,
+            '-c:a', 'copy',
+            '-metadata', `title=${title}`,
+            '-metadata', `artist=${artist}`,
+            '-metadata', `album=${album}`,
+            '-y',
+            finalFile
+          ];
+        }
+
+        debugLog('hasThumb: ' + hasThumb);
+        debugLog('FFmpeg args: ' + ffmpegArgs.join(' '));
 
         let ffmpegErr = '';
-        const ffmpegProcess = spawn(ffmpeg, ffmpegArgs);
+        const ffmpegProcess = spawn(ffmpeg, ffmpegArgs, { stdio: ['pipe', 'pipe', 'pipe'] });
+
+        // Close stdin immediately so ffmpeg doesn't wait for input
+        ffmpegProcess.stdin.end();
 
         ffmpegProcess.stderr.on('data', (data) => {
           ffmpegErr += data.toString();
         });
 
-        ffmpegProcess.on('close', (ffmpegCode) => {
-          // Check if output file was created
-          const outputExists = fs.existsSync(finalFile);
+        ffmpegProcess.on('error', (err) => {
+          debugLog('FFmpeg spawn error: ' + err.message);
+          // Try to copy the raw file as fallback
+          try {
+            fs.copyFileSync(tempAudio, finalFile);
+          } catch (e) {
+            // Ignore
+          }
+          fs.rmSync(tempDir, { recursive: true, force: true });
+          resolve({
+            success: true,
+            file: finalFile,
+            title: title,
+            artist: artist,
+            album: album
+          });
+        });
 
-          if (!outputExists && fs.existsSync(tempAudio)) {
-            // If ffmpeg failed to create output, just copy the raw file
+        ffmpegProcess.on('close', (ffmpegCode) => {
+          debugLog('FFmpeg closed with code: ' + ffmpegCode);
+          debugLog('FFmpeg stderr: ' + ffmpegErr.substring(0, 500));
+
+          // Check if output file was created AND has content
+          let outputValid = false;
+          try {
+            const stats = fs.statSync(finalFile);
+            outputValid = stats.size > 0;
+            debugLog('Output file size: ' + stats.size);
+          } catch (e) {
+            debugLog('Output file does not exist');
+          }
+
+          if (!outputValid && fs.existsSync(tempAudio)) {
+            // If ffmpeg failed to create valid output, copy the raw file
+            debugLog('Copying raw audio file as fallback');
             try {
               fs.copyFileSync(tempAudio, finalFile);
             } catch (e) {
@@ -522,4 +597,82 @@ ipcMain.handle('download-video', async (event, url, outputDir) => {
       });
     });
   });
+});
+
+// iPod functions
+
+// Check if iPod is connected
+ipcMain.handle('check-ipod', async () => {
+  const ipodPaths = [
+    '/Volumes/iPod',
+    '/Volumes/IPOD',
+    '/Volumes/iPod Classic'
+  ];
+
+  for (const ipodPath of ipodPaths) {
+    if (fs.existsSync(ipodPath)) {
+      // Check if it has Rockbox or iPod_Control (valid iPod)
+      const hasRockbox = fs.existsSync(path.join(ipodPath, '.rockbox'));
+      const hasIpodControl = fs.existsSync(path.join(ipodPath, 'iPod_Control'));
+
+      if (hasRockbox || hasIpodControl) {
+        // Get free space
+        try {
+          const stats = fs.statfsSync(ipodPath);
+          const freeSpace = stats.bfree * stats.bsize;
+          return {
+            connected: true,
+            path: ipodPath,
+            hasRockbox: hasRockbox,
+            freeSpace: freeSpace
+          };
+        } catch (e) {
+          return {
+            connected: true,
+            path: ipodPath,
+            hasRockbox: hasRockbox,
+            freeSpace: 0
+          };
+        }
+      }
+    }
+  }
+
+  return { connected: false };
+});
+
+// Copy file to iPod
+ipcMain.handle('copy-to-ipod', async (event, filePath, artist, title) => {
+  // Find iPod
+  const ipodPaths = ['/Volumes/iPod', '/Volumes/IPOD', '/Volumes/iPod Classic'];
+  let ipodPath = null;
+
+  for (const p of ipodPaths) {
+    if (fs.existsSync(p)) {
+      ipodPath = p;
+      break;
+    }
+  }
+
+  if (!ipodPath) {
+    throw new Error('iPod not connected');
+  }
+
+  // Create Music folder structure: /Volumes/iPod/Music/Artist/
+  const safeArtist = (artist || 'Unknown Artist').replace(/[<>:"/\\|?*]/g, '_').substring(0, 50);
+  const musicDir = path.join(ipodPath, 'Music', safeArtist);
+
+  fs.mkdirSync(musicDir, { recursive: true });
+
+  // Get filename from source
+  const fileName = path.basename(filePath);
+  const destPath = path.join(musicDir, fileName);
+
+  // Copy file
+  fs.copyFileSync(filePath, destPath);
+
+  return {
+    success: true,
+    destination: destPath
+  };
 });

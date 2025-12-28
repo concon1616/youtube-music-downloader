@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld('api', {
   getDownloadPath: () => ipcRenderer.invoke('get-download-path'),
   openFolder: (path) => ipcRenderer.invoke('open-folder', path),
   checkDependencies: () => ipcRenderer.invoke('check-dependencies'),
+  checkIpod: () => ipcRenderer.invoke('check-ipod'),
+  copyToIpod: (filePath, artist, title) => ipcRenderer.invoke('copy-to-ipod', filePath, artist, title),
   onProgress: (callback) => {
     ipcRenderer.on('download-progress', (event, data) => callback(data));
   }
