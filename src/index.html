@@ -686,15 +686,23 @@
       if (completed.length === 0) return;
       completedSection.style.display = 'block';
 
-      completedList.innerHTML = completed.map((item, idx) => `
-        <div class="completed-item">
-          <span class="completed-item-name">${escapeHtml(item.artist)} - ${escapeHtml(item.title)}</span>
-          <div class="completed-buttons">
-            ${ipodConnected && item.file && item.file.endsWith('.m4a') ? `<button class="btn btn-ipod btn-small copy-to-ipod" data-idx="${idx}">Copy to iPod</button>` : ''}
-            <button class="btn btn-secondary btn-small show-in-finder" data-idx="${idx}">Show in Finder</button>
+      completedList.innerHTML = completed.map((item, idx) => {
+        const isAudio = item.file && item.file.endsWith('.m4a');
+        const isVideo = item.file && item.file.endsWith('.mp4');
+        const showIpodBtn = ipodConnected && (isAudio || isVideo);
+        const ipodBtnClass = isVideo ? 'video-to-ipod' : 'copy-to-ipod';
+        const ipodBtnText = isVideo ? 'Convert to iPod' : 'Copy to iPod';
+
+        return `
+          <div class="completed-item">
+            <span class="completed-item-name">${escapeHtml(item.artist)} - ${escapeHtml(item.title)}</span>
+            <div class="completed-buttons">
+              ${showIpodBtn ? `<button class="btn btn-ipod btn-small ${ipodBtnClass}" data-idx="${idx}">${ipodBtnText}</button>` : ''}
+              <button class="btn btn-secondary btn-small show-in-finder" data-idx="${idx}">Show in Finder</button>
+            </div>
           </div>
-        </div>
-      `).join('');
+        `;
+      }).join('');
 
       // Add click handlers for Show in Finder
       completedList.querySelectorAll('.show-in-finder').forEach(btn => {
@@ -706,7 +714,7 @@
         });
       });
 
-      // Add click handlers for Copy to iPod
+      // Add click handlers for Copy to iPod (audio)
       completedList.querySelectorAll('.copy-to-ipod').forEach(btn => {
         btn.addEventListener('click', async () => {
           const idx = parseInt(btn.dataset.idx);
@@ -730,6 +738,37 @@
             btn.style.background = 'rgba(255, 107, 107, 0.3)';
             setTimeout(() => {
               btn.textContent = 'Copy to iPod';
+              btn.disabled = false;
+              btn.style.background = '';
+            }, 2000);
+          }
+        });
+      });
+
+      // Add click handlers for Convert to iPod (video)
+      completedList.querySelectorAll('.video-to-ipod').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const idx = parseInt(btn.dataset.idx);
+          const item = completed[idx];
+          if (!item || !item.file) return;
+
+          btn.disabled = true;
+          btn.textContent = 'Converting...';
+
+          try {
+            await window.api.videoToIpod(item.file, item.artist, item.title);
+            btn.textContent = 'Done!';
+            btn.style.background = 'rgba(46, 213, 115, 0.3)';
+            setTimeout(() => {
+              btn.textContent = 'Convert to iPod';
+              btn.disabled = false;
+              btn.style.background = '';
+            }, 2000);
+          } catch (err) {
+            btn.textContent = 'Failed';
+            btn.style.background = 'rgba(255, 107, 107, 0.3)';
+            setTimeout(() => {
+              btn.textContent = 'Convert to iPod';
               btn.disabled = false;
               btn.style.background = '';
             }, 2000);

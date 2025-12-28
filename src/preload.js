@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('api', {
   checkDependencies: () => ipcRenderer.invoke('check-dependencies'),
   checkIpod: () => ipcRenderer.invoke('check-ipod'),
   copyToIpod: (filePath, artist, title) => ipcRenderer.invoke('copy-to-ipod', filePath, artist, title),
+  videoToIpod: (filePath, artist, title) => ipcRenderer.invoke('video-to-ipod', filePath, artist, title),
   onProgress: (callback) => {
     ipcRenderer.on('download-progress', (event, data) => callback(data));
   }

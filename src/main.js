@@ -114,6 +114,7 @@ ipcMain.handle('get-info', async (event, url) => {
       '--dump-json',
       '--flat-playlist',
       '--no-warnings',
+      '--cookies-from-browser', 'chrome',
       url
     ];
 
@@ -132,6 +133,8 @@ ipcMain.handle('get-info', async (event, url) => {
 
     process.on('close', (code) => {
       if (code !== 0) {
+        debugLog('get-info failed with code: ' + code);
+        debugLog('get-info error: ' + errorOutput);
         reject(new Error(errorOutput || 'Failed to get video info'));
         return;
       }
@@ -172,6 +175,7 @@ ipcMain.handle('download-track', async (event, url, outputDir) => {
     const infoArgs = [
       '--dump-json',
       '--no-warnings',
+      '--cookies-from-browser', 'chrome',
       url
     ];
 
@@ -227,6 +231,7 @@ ipcMain.handle('download-track', async (event, url, outputDir) => {
         '-o', tempAudioTemplate,
         '--no-playlist',
         '--progress',
+        '--cookies-from-browser', 'chrome',
         url
       ];
 
@@ -464,6 +469,7 @@ ipcMain.handle('download-video', async (event, url, outputDir) => {
     const infoArgs = [
       '--dump-json',
       '--no-warnings',
+      '--cookies-from-browser', 'chrome',
       url
     ];
 
@@ -507,6 +513,7 @@ ipcMain.handle('download-video', async (event, url, outputDir) => {
         '-o', tempFile,
         '--no-playlist',
         '--progress',
+        '--cookies-from-browser', 'chrome',
         url
       ];
 
@@ -675,4 +682,108 @@ ipcMain.handle('copy-to-ipod', async (event, filePath, artist, title) => {
     success: true,
     destination: destPath
   };
+});
+
+// Convert and copy video to iPod (iPod-compatible format: H.264, 640x480 max)
+ipcMain.handle('video-to-ipod', async (event, filePath, artist, title) => {
+  const ffmpeg = getFfmpegPath();
+
+  // Find iPod
+  const ipodPaths = ['/Volumes/iPod', '/Volumes/IPOD', '/Volumes/iPod Classic'];
+  let ipodPath = null;
+
+  for (const p of ipodPaths) {
+    if (fs.existsSync(p)) {
+      ipodPath = p;
+      break;
+    }
+  }
+
+  if (!ipodPath) {
+    throw new Error('iPod not connected');
+  }
+
+  // Create Videos folder structure: /Volumes/iPod/Videos/Artist/
+  const safeArtist = (artist || 'Unknown Artist').replace(/[<>:"/\\|?*]/g, '_').substring(0, 50);
+  const videosDir = path.join(ipodPath, 'Videos', safeArtist);
+  fs.mkdirSync(videosDir, { recursive: true });
+
+  // Get filename and create destination path
+  const baseName = path.basename(filePath, path.extname(filePath));
+  const destPath = path.join(videosDir, baseName + '.mp4');
+
+  debugLog('Converting video for iPod: ' + filePath);
+  debugLog('Destination: ' + destPath);
+
+  return new Promise((resolve, reject) => {
+    // Convert to iPod-compatible format: H.264, 640x480, AAC audio
+    const ffmpegArgs = [
+      '-i', filePath,
+      '-vf', 'scale=640:480:force_original_aspect_ratio=decrease,pad=640:480:(ow-iw)/2:(oh-ih)/2',
+      '-c:v', 'libx264',
+      '-preset', 'medium',
+      '-crf', '23',
+      '-c:a', 'aac',
+      '-b:a', '128k',
+      '-movflags', '+faststart',
+      '-y',
+      destPath
+    ];
+
+    debugLog('FFmpeg video args: ' + ffmpegArgs.join(' '));
+
+    const ffmpegProcess = spawn(ffmpeg, ffmpegArgs, { stdio: ['pipe', 'pipe', 'pipe'] });
+    ffmpegProcess.stdin.end();
+
+    let ffmpegErr = '';
+    let lastProgress = 0;
+
+    ffmpegProcess.stderr.on('data', (data) => {
+      ffmpegErr += data.toString();
+      // Parse progress from ffmpeg output
+      const timeMatch = data.toString().match(/time=(\d+):(\d+):(\d+)/);
+      if (timeMatch) {
+        const seconds = parseInt(timeMatch[1]) * 3600 + parseInt(timeMatch[2]) * 60 + parseInt(timeMatch[3]);
+        if (seconds > lastProgress) {
+          lastProgress = seconds;
+          mainWindow.webContents.send('download-progress', {
+            percent: Math.min(95, seconds),
+            title: title,
+            status: `Converting for iPod... ${seconds}s`
+          });
+        }
+      }
+    });
+
+    ffmpegProcess.on('error', (err) => {
+      debugLog('FFmpeg video error: ' + err.message);
+      reject(new Error('Failed to start video conversion: ' + err.message));
+    });
+
+    ffmpegProcess.on('close', (code) => {
+      debugLog('FFmpeg video closed with code: ' + code);
+
+      if (code !== 0) {
+        debugLog('FFmpeg stderr: ' + ffmpegErr.substring(0, 1000));
+        reject(new Error('Video conversion failed'));
+        return;
+      }
+
+      // Verify output exists and has content
+      try {
+        const stats = fs.statSync(destPath);
+        if (stats.size > 0) {
+          debugLog('Video converted successfully: ' + stats.size + ' bytes');
+          resolve({
+            success: true,
+            destination: destPath
+          });
+        } else {
+          reject(new Error('Converted video is empty'));
+        }
+      } catch (e) {
+        reject(new Error('Converted video not found'));
+      }
+    });
+  });
 });
