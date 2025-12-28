@@ -488,31 +488,42 @@ function checkCommand(cmd) {
 let downloadCancelled = false;
 
 ipcMain.handle('stop-download', async () => {
-  if (currentDownloadProcess) {
-    const pid = currentDownloadProcess.pid;
-    debugLog('Stopping download process: ' + pid);
-    downloadCancelled = true;
+  debugLog('Stop download requested');
+  downloadCancelled = true;
 
+  try {
+    // Kill all yt-dlp and ffmpeg processes started by this app
+    const { execSync } = require('child_process');
+
+    // Kill yt-dlp processes
     try {
-      // Kill child processes first (ffmpeg spawned by yt-dlp)
-      spawn('pkill', ['-9', '-P', pid.toString()]);
-
-      // Kill the main process
-      currentDownloadProcess.kill('SIGKILL');
-
-      // Also try killing by process group
-      try {
-        process.kill(-pid, 'SIGKILL');
-      } catch (e) {
-        // Process group kill may fail, that's ok
-      }
+      execSync('pkill -9 -f yt-dlp', { stdio: 'ignore' });
+      debugLog('Killed yt-dlp processes');
     } catch (e) {
-      debugLog('Error killing process: ' + e.message);
+      // No processes to kill
     }
-    currentDownloadProcess = null;
-    return { stopped: true };
+
+    // Kill ffmpeg processes
+    try {
+      execSync('pkill -9 -f ffmpeg', { stdio: 'ignore' });
+      debugLog('Killed ffmpeg processes');
+    } catch (e) {
+      // No processes to kill
+    }
+
+    if (currentDownloadProcess) {
+      try {
+        currentDownloadProcess.kill('SIGKILL');
+      } catch (e) {
+        // Already dead
+      }
+      currentDownloadProcess = null;
+    }
+  } catch (e) {
+    debugLog('Error stopping download: ' + e.message);
   }
-  return { stopped: false };
+
+  return { stopped: true };
 });
 
 // Download a video as MP4
