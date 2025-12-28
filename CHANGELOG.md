@@ -2,6 +2,13 @@
 
 All notable changes to YouTube Downloader will be documented in this file.
 
+## [1.2.2] - 2025-12-28
+
+### Fixed
+- Audio downloads now properly re-encoded to 44.1kHz AAC (was copying 48kHz)
+- Added debug logging for video conversion errors
+- Higher audio bitrate (256kbps) for better quality
+
 ## [1.2.1] - 2025-12-28
 
 ### Fixed

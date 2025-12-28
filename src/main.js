@@ -324,12 +324,16 @@ ipcMain.handle('download-track', async (event, url, outputDir) => {
         let ffmpegArgs;
         if (hasThumb) {
           // For m4a with artwork, need specific format
+          // Re-encode to 44.1kHz AAC for iPod compatibility
           ffmpegArgs = [
             '-i', tempAudio,
             '-i', tempThumb,
             '-map', '0:a',
             '-map', '1:v',
-            '-c:a', 'copy',
+            '-c:a', 'aac',
+            '-b:a', '256k',
+            '-ar', '44100',
+            '-af', 'aresample=async=1000',
             '-c:v', 'mjpeg',
             '-disposition:v:0', 'attached_pic',
             '-metadata', `title=${title}`,
@@ -339,9 +343,13 @@ ipcMain.handle('download-track', async (event, url, outputDir) => {
             finalFile
           ];
         } else {
+          // Re-encode to 44.1kHz AAC for iPod compatibility
           ffmpegArgs = [
             '-i', tempAudio,
-            '-c:a', 'copy',
+            '-c:a', 'aac',
+            '-b:a', '256k',
+            '-ar', '44100',
+            '-af', 'aresample=async=1000',
             '-metadata', `title=${title}`,
             '-metadata', `artist=${artist}`,
             '-metadata', `album=${album}`,
@@ -626,7 +634,9 @@ ipcMain.handle('download-video', async (event, url, outputDir, ipodFormat = fals
             debugLog('iPod conversion args: ' + ffmpegArgs.join(' '));
 
             const ffmpegProcess = spawn(ffmpeg, ffmpegArgs, { env: spawnEnv });
+            let ffmpegErr = '';
             ffmpegProcess.stderr.on('data', (data) => {
+              ffmpegErr += data.toString();
               const timeMatch = data.toString().match(/time=(\d+):(\d+):(\d+)/);
               if (timeMatch) {
                 mainWindow.webContents.send('download-progress', {
@@ -638,6 +648,10 @@ ipcMain.handle('download-video', async (event, url, outputDir, ipodFormat = fals
             });
 
             ffmpegProcess.on('close', (code) => {
+              debugLog('iPod video ffmpeg exit code: ' + code);
+              if (code !== 0) {
+                debugLog('iPod video ffmpeg error: ' + ffmpegErr.substring(ffmpegErr.length - 2000));
+              }
               fs.rmSync(tempDir, { recursive: true, force: true });
 
               if (code !== 0) {
@@ -670,8 +684,17 @@ ipcMain.handle('download-video', async (event, url, outputDir, ipodFormat = fals
               finalFile
             ];
 
+            debugLog('Regular video conversion args: ' + ffmpegArgs.join(' '));
             const ffmpegProcess = spawn(ffmpeg, ffmpegArgs, { env: spawnEnv });
+            let ffmpegErr = '';
+            ffmpegProcess.stderr.on('data', (data) => {
+              ffmpegErr += data.toString();
+            });
             ffmpegProcess.on('close', (code) => {
+              debugLog('Regular video ffmpeg exit code: ' + code);
+              if (code !== 0) {
+                debugLog('Regular video ffmpeg error: ' + ffmpegErr.substring(ffmpegErr.length - 2000));
+              }
               fs.rmSync(tempDir, { recursive: true, force: true });
 
               if (code !== 0) {
