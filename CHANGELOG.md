@@ -2,6 +2,13 @@
 
 All notable changes to YouTube Downloader will be documented in this file.
 
+## [1.3.0] - 2025-12-28
+
+### Added
+- Load button to preview video/playlist info before downloading
+- Stop button to cancel downloads in progress
+- Preview shows title, artist, duration, and thumbnail
+
 ## [1.2.4] - 2025-12-28
 
 ### Fixed

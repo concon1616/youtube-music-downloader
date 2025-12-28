@@ -27,6 +27,7 @@ function debugLog(msg) {
 
 let mainWindow;
 let downloadPath = app.getPath('downloads');
+let currentDownloadProcess = null; // Track current download for cancellation
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -251,6 +252,7 @@ ipcMain.handle('download-track', async (event, url, outputDir) => {
 
       let dlError = '';
       const downloadProcess = spawn(ytdlp, downloadArgs, { env: spawnEnv });
+      currentDownloadProcess = downloadProcess;
 
       downloadProcess.stdout.on('data', (data) => {
         const match = data.toString().match(/(\d+\.?\d*)%/);
@@ -476,6 +478,23 @@ function checkCommand(cmd) {
   });
 }
 
+// Stop current download
+ipcMain.handle('stop-download', async () => {
+  if (currentDownloadProcess) {
+    debugLog('Stopping download process: ' + currentDownloadProcess.pid);
+    try {
+      currentDownloadProcess.kill('SIGTERM');
+      // Also kill any child processes (ffmpeg spawned by yt-dlp)
+      spawn('pkill', ['-P', currentDownloadProcess.pid.toString()]);
+    } catch (e) {
+      debugLog('Error killing process: ' + e.message);
+    }
+    currentDownloadProcess = null;
+    return { stopped: true };
+  }
+  return { stopped: false };
+});
+
 // Download a video as MP4
 ipcMain.handle('download-video', async (event, url, outputDir, ipodFormat = false) => {
   return new Promise((resolve, reject) => {
@@ -545,6 +564,7 @@ ipcMain.handle('download-video', async (event, url, outputDir, ipodFormat = fals
       ];
 
       const downloadProcess = spawn(ytdlp, downloadArgs, { env: spawnEnv });
+      currentDownloadProcess = downloadProcess;
 
       downloadProcess.stdout.on('data', (data) => {
         const match = data.toString().match(/(\d+\.?\d*)%/);
