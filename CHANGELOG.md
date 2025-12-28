@@ -2,6 +2,12 @@
 
 All notable changes to YouTube Downloader will be documented in this file.
 
+## [1.2.3] - 2025-12-28
+
+### Fixed
+- iPod video conversion failing when thumbnail present (profile applied to wrong stream)
+- Use stream-specific profile/level flags for H.264 encoding
+
 ## [1.2.2] - 2025-12-28
 
 ### Fixed
