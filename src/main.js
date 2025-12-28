@@ -5,6 +5,18 @@ const { spawn } = require('child_process');
 const https = require('https');
 const http = require('http');
 
+// Extended PATH for spawned processes (needed for deno, ffmpeg, etc.)
+const extendedPath = [
+  '/opt/homebrew/bin',
+  '/opt/homebrew/sbin',
+  '/usr/local/bin',
+  '/usr/bin',
+  '/bin',
+  process.env.PATH
+].join(':');
+
+const spawnEnv = { ...process.env, PATH: extendedPath };
+
 // Debug logging to file
 const logFile = '/tmp/ytdownloader-debug.log';
 function debugLog(msg) {
@@ -121,7 +133,7 @@ ipcMain.handle('get-info', async (event, url) => {
     let output = '';
     let errorOutput = '';
 
-    const process = spawn(ytdlp, args);
+    const process = spawn(ytdlp, args, { env: spawnEnv });
 
     process.stdout.on('data', (data) => {
       output += data.toString();
@@ -181,7 +193,7 @@ ipcMain.handle('download-track', async (event, url, outputDir) => {
 
     let infoOutput = '';
     let infoError = '';
-    const infoProcess = spawn(ytdlp, infoArgs);
+    const infoProcess = spawn(ytdlp, infoArgs, { env: spawnEnv });
 
     infoProcess.stdout.on('data', (data) => {
       infoOutput += data.toString();
@@ -221,9 +233,9 @@ ipcMain.handle('download-track', async (event, url, outputDir) => {
       const tempThumb = path.join(tempDir, 'thumbnail.jpg');
       const finalFile = path.join(outputDir || downloadPath, `${safeArtist} - ${safeTitle}.m4a`);
 
-      // Download audio
+      // Download audio - use flexible format selection
       const downloadArgs = [
-        '-f', 'bestaudio[ext=m4a]/bestaudio',
+        '-f', 'bestaudio/best',
         '-x',
         '--audio-format', 'm4a',
         '--audio-quality', '0',
@@ -232,11 +244,13 @@ ipcMain.handle('download-track', async (event, url, outputDir) => {
         '--no-playlist',
         '--progress',
         '--cookies-from-browser', 'chrome',
+        '--no-check-certificates',
+        '--extractor-retries', '3',
         url
       ];
 
       let dlError = '';
-      const downloadProcess = spawn(ytdlp, downloadArgs);
+      const downloadProcess = spawn(ytdlp, downloadArgs, { env: spawnEnv });
 
       downloadProcess.stdout.on('data', (data) => {
         const match = data.toString().match(/(\d+\.?\d*)%/);
@@ -340,7 +354,7 @@ ipcMain.handle('download-track', async (event, url, outputDir) => {
         debugLog('FFmpeg args: ' + ffmpegArgs.join(' '));
 
         let ffmpegErr = '';
-        const ffmpegProcess = spawn(ffmpeg, ffmpegArgs, { stdio: ['pipe', 'pipe', 'pipe'] });
+        const ffmpegProcess = spawn(ffmpeg, ffmpegArgs, { stdio: ['pipe', 'pipe', 'pipe'], env: spawnEnv });
 
         // Close stdin immediately so ffmpeg doesn't wait for input
         ffmpegProcess.stdin.end();
@@ -474,7 +488,7 @@ ipcMain.handle('download-video', async (event, url, outputDir) => {
     ];
 
     let infoOutput = '';
-    const infoProcess = spawn(ytdlp, infoArgs);
+    const infoProcess = spawn(ytdlp, infoArgs, { env: spawnEnv });
 
     infoProcess.stdout.on('data', (data) => {
       infoOutput += data.toString();
@@ -514,10 +528,12 @@ ipcMain.handle('download-video', async (event, url, outputDir) => {
         '--no-playlist',
         '--progress',
         '--cookies-from-browser', 'chrome',
+        '--no-check-certificates',
+        '--extractor-retries', '3',
         url
       ];
 
-      const downloadProcess = spawn(ytdlp, downloadArgs);
+      const downloadProcess = spawn(ytdlp, downloadArgs, { env: spawnEnv });
 
       downloadProcess.stdout.on('data', (data) => {
         const match = data.toString().match(/(\d+\.?\d*)%/);
@@ -572,7 +588,7 @@ ipcMain.handle('download-video', async (event, url, outputDir) => {
               finalFile
             ];
 
-            const ffmpegProcess = spawn(ffmpeg, ffmpegArgs);
+            const ffmpegProcess = spawn(ffmpeg, ffmpegArgs, { env: spawnEnv });
             ffmpegProcess.on('close', (code) => {
               fs.rmSync(tempDir, { recursive: true, force: true });
 
@@ -732,7 +748,7 @@ ipcMain.handle('video-to-ipod', async (event, filePath, artist, title) => {
 
     debugLog('FFmpeg video args: ' + ffmpegArgs.join(' '));
 
-    const ffmpegProcess = spawn(ffmpeg, ffmpegArgs, { stdio: ['pipe', 'pipe', 'pipe'] });
+    const ffmpegProcess = spawn(ffmpeg, ffmpegArgs, { stdio: ['pipe', 'pipe', 'pipe'], env: spawnEnv });
     ffmpegProcess.stdin.end();
 
     let ffmpegErr = '';
