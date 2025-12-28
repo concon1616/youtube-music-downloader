@@ -2,7 +2,29 @@
 
 All notable changes to YouTube Downloader will be documented in this file.
 
-## [1.1.0] - 2024-12-28
+## [1.2.0] - 2025-12-28
+
+### Added
+- iPod sync support for audio files (direct copy to iPod)
+- iPod video conversion (640x480 H.264 Baseline for iPod Classic)
+- "iPod Format" checkbox for iTunes-compatible video downloads (.m4v)
+- Thumbnail/artwork embedding in iPod format videos
+- iPod connection status indicator with free space display
+- YouTube cookie authentication (bypasses bot detection)
+- Extended PATH support for spawned processes (deno for JS challenges)
+
+### Fixed
+- Audio downloads now work reliably with artwork
+- Fixed ffmpeg thumbnail embedding for m4a files
+- Fixed YouTube n-challenge solving by ensuring deno is accessible
+- More flexible format selection with retries
+
+### Technical
+- Uses Chrome cookies for YouTube authentication
+- H.264 Baseline profile, level 3.0 for iPod compatibility
+- Automatic retry on format selection failures
+
+## [1.1.0] - 2025-12-28
 
 ### Added
 - Video download support (MP4 format)
@@ -13,7 +35,7 @@ All notable changes to YouTube Downloader will be documented in this file.
 - Renamed app from "YouTube Music Downloader" to "YouTube Downloader"
 - Updated subtitle to reflect dual format support
 
-## [1.0.0] - 2024-12-28
+## [1.0.0] - 2025-12-28
 
 ### Added
 - Initial release of YouTube Music Downloader
