@@ -171,6 +171,8 @@ ipcMain.handle('get-info', async (event, url) => {
 
 // Download a single track
 ipcMain.handle('download-track', async (event, url, outputDir) => {
+  downloadCancelled = false;
+
   return new Promise((resolve, reject) => {
     const ytdlp = getYtDlpPath();
     const ffmpeg = getFfmpegPath();
@@ -287,9 +289,13 @@ ipcMain.handle('download-track', async (event, url, outputDir) => {
           debugLog(`  ${f}: ${stats.size} bytes`);
         });
 
-        if (downloadCode !== 0) {
+        if (downloadCode !== 0 || downloadCancelled) {
           fs.rmSync(tempDir, { recursive: true, force: true });
-          reject(new Error('Failed to download audio: ' + dlError));
+          if (downloadCancelled) {
+            reject(new Error('Download cancelled'));
+          } else {
+            reject(new Error('Failed to download audio: ' + dlError));
+          }
           return;
         }
 
@@ -479,13 +485,27 @@ function checkCommand(cmd) {
 }
 
 // Stop current download
+let downloadCancelled = false;
+
 ipcMain.handle('stop-download', async () => {
   if (currentDownloadProcess) {
-    debugLog('Stopping download process: ' + currentDownloadProcess.pid);
+    const pid = currentDownloadProcess.pid;
+    debugLog('Stopping download process: ' + pid);
+    downloadCancelled = true;
+
     try {
-      currentDownloadProcess.kill('SIGTERM');
-      // Also kill any child processes (ffmpeg spawned by yt-dlp)
-      spawn('pkill', ['-P', currentDownloadProcess.pid.toString()]);
+      // Kill child processes first (ffmpeg spawned by yt-dlp)
+      spawn('pkill', ['-9', '-P', pid.toString()]);
+
+      // Kill the main process
+      currentDownloadProcess.kill('SIGKILL');
+
+      // Also try killing by process group
+      try {
+        process.kill(-pid, 'SIGKILL');
+      } catch (e) {
+        // Process group kill may fail, that's ok
+      }
     } catch (e) {
       debugLog('Error killing process: ' + e.message);
     }
@@ -497,6 +517,8 @@ ipcMain.handle('stop-download', async () => {
 
 // Download a video as MP4
 ipcMain.handle('download-video', async (event, url, outputDir, ipodFormat = false) => {
+  downloadCancelled = false;
+
   return new Promise((resolve, reject) => {
     const ytdlp = getYtDlpPath();
     const ffmpeg = getFfmpegPath();
@@ -587,9 +609,13 @@ ipcMain.handle('download-video', async (event, url, outputDir, ipodFormat = fals
       });
 
       downloadProcess.on('close', async (downloadCode) => {
-        if (downloadCode !== 0) {
+        if (downloadCode !== 0 || downloadCancelled) {
           fs.rmSync(tempDir, { recursive: true, force: true });
-          reject(new Error('Failed to download video'));
+          if (downloadCancelled) {
+            reject(new Error('Download cancelled'));
+          } else {
+            reject(new Error('Failed to download video'));
+          }
           return;
         }
 
