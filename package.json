@@ -1,6 +1,6 @@
 {
   "name": "youtube-downloader",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "description": "YouTube Downloader - Download as high-quality M4A or MP4",
   "main": "src/main.js",
   "scripts": {

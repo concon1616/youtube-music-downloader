@@ -2,6 +2,13 @@
 
 All notable changes to YouTube Downloader will be documented in this file.
 
+## [1.2.4] - 2025-12-28
+
+### Fixed
+- Switch to Apple AudioToolbox AAC encoder (aac_at) for better iPod compatibility
+- Remove async resampling filter that may have caused audio artifacts
+- Should eliminate clicking/popping sounds on iPod playback
+
 ## [1.2.3] - 2025-12-28
 
 ### Fixed

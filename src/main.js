@@ -330,10 +330,9 @@ ipcMain.handle('download-track', async (event, url, outputDir) => {
             '-i', tempThumb,
             '-map', '0:a',
             '-map', '1:v',
-            '-c:a', 'aac',
+            '-c:a', 'aac_at',
             '-b:a', '256k',
             '-ar', '44100',
-            '-af', 'aresample=async=1000',
             '-c:v', 'mjpeg',
             '-disposition:v:0', 'attached_pic',
             '-metadata', `title=${title}`,
@@ -343,13 +342,12 @@ ipcMain.handle('download-track', async (event, url, outputDir) => {
             finalFile
           ];
         } else {
-          // Re-encode to 44.1kHz AAC for iPod compatibility
+          // Re-encode to 44.1kHz AAC for iPod compatibility (Apple encoder)
           ffmpegArgs = [
             '-i', tempAudio,
-            '-c:a', 'aac',
+            '-c:a', 'aac_at',
             '-b:a', '256k',
             '-ar', '44100',
-            '-af', 'aresample=async=1000',
             '-metadata', `title=${title}`,
             '-metadata', `artist=${artist}`,
             '-metadata', `album=${album}`,
@@ -619,10 +617,9 @@ ipcMain.handle('download-video', async (event, url, outputDir, ipodFormat = fals
               '-preset', 'medium',
               '-crf', '23',
               ...(hasThumb ? ['-c:v:1', 'mjpeg'] : []),
-              '-c:a', 'aac',
+              '-c:a', 'aac_at',
               '-b:a', '128k',
               '-ar', '44100',
-              '-af', 'aresample=async=1000',
               '-ac', '2',
               '-metadata', `title=${title}`,
               '-metadata', `artist=${artist}`,
@@ -677,9 +674,8 @@ ipcMain.handle('download-video', async (event, url, outputDir, ipodFormat = fals
             const ffmpegArgs = [
               '-i', tempVideoPath,
               '-c:v', 'copy',
-              '-c:a', 'aac',
+              '-c:a', 'aac_at',
               '-ar', '44100',
-              '-af', 'aresample=async=1000',
               '-y',
               finalFile
             ];
@@ -844,10 +840,9 @@ ipcMain.handle('video-to-ipod', async (event, filePath, artist, title) => {
       '-c:v', 'libx264',
       '-preset', 'medium',
       '-crf', '23',
-      '-c:a', 'aac',
+      '-c:a', 'aac_at',
       '-b:a', '128k',
       '-ar', '44100',
-      '-af', 'aresample=async=1000',
       '-movflags', '+faststart',
       '-y',
       destPath
