@@ -418,6 +418,13 @@
       <button id="formatVideo" class="format-btn">Video (MP4)</button>
     </div>
 
+    <div id="ipodFormatRow" class="settings-row" style="display: none;">
+      <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+        <input type="checkbox" id="ipodFormat" style="width: 16px; height: 16px;">
+        <span style="color: #8892b0; font-size: 13px;">iPod Format (640x480, converts for iTunes sync)</span>
+      </label>
+    </div>
+
     <div class="settings-row">
       <svg class="folder-icon" viewBox="0 0 24 24" fill="currentColor">
         <path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
@@ -480,18 +487,23 @@
     let ipodPath = '';
     let ipodFreeSpace = 0;
 
+    const ipodFormatRow = document.getElementById('ipodFormatRow');
+    const ipodFormatCheckbox = document.getElementById('ipodFormat');
+
     // Format toggle
     formatAudio.addEventListener('click', () => {
       currentFormat = 'audio';
       formatAudio.classList.add('active');
       formatAudio.classList.remove('video');
       formatVideo.classList.remove('active');
+      ipodFormatRow.style.display = 'none';
     });
 
     formatVideo.addEventListener('click', () => {
       currentFormat = 'video';
       formatVideo.classList.add('active', 'video');
       formatAudio.classList.remove('active');
+      ipodFormatRow.style.display = 'flex';
     });
 
     // Check iPod status
@@ -621,7 +633,7 @@
           progressTitle.textContent = `Downloading: ${item.title}`;
 
           const result = currentFormat === 'video'
-            ? await window.api.downloadVideo(item.url, currentDownloadPath)
+            ? await window.api.downloadVideo(item.url, currentDownloadPath, ipodFormatCheckbox.checked)
             : await window.api.downloadTrack(item.url, currentDownloadPath);
           item.status = 'done';
 

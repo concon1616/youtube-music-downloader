@@ -471,11 +471,14 @@ function checkCommand(cmd) {
 }
 
 // Download a video as MP4
-ipcMain.handle('download-video', async (event, url, outputDir) => {
+ipcMain.handle('download-video', async (event, url, outputDir, ipodFormat = false) => {
   return new Promise((resolve, reject) => {
     const ytdlp = getYtDlpPath();
     const ffmpeg = getFfmpegPath();
     const tempDir = path.join(app.getPath('temp'), 'ytvideo-' + Date.now());
+
+    debugLog('=== DOWNLOAD VIDEO DEBUG ===');
+    debugLog('iPod format: ' + ipodFormat);
 
     fs.mkdirSync(tempDir, { recursive: true });
 
@@ -511,12 +514,14 @@ ipcMain.handle('download-video', async (event, url, outputDir) => {
       // Extract metadata
       const title = info.title || 'Unknown Title';
       const artist = info.artist || info.uploader || info.channel || 'Unknown Artist';
+      const thumbnail = info.thumbnail || (info.thumbnails && info.thumbnails.length > 0 ? info.thumbnails[info.thumbnails.length - 1].url : null);
 
       // Clean filename
       const safeTitle = title.replace(/[<>:"/\\|?*]/g, '_').substring(0, 100);
       const safeArtist = artist.replace(/[<>:"/\\|?*]/g, '_').substring(0, 50);
 
       const tempFile = path.join(tempDir, 'video.%(ext)s');
+      const tempThumb = path.join(tempDir, 'thumbnail.jpg');
       const finalFile = path.join(outputDir || downloadPath, `${safeArtist} - ${safeTitle}.mp4`);
 
       // Download video with best quality, using ffmpeg for merging
@@ -565,7 +570,7 @@ ipcMain.handle('download-video', async (event, url, outputDir) => {
         mainWindow.webContents.send('download-progress', {
           percent: 100,
           title: title,
-          status: 'Processing...'
+          status: ipodFormat ? 'Converting for iPod...' : 'Processing...'
         });
 
         // Find the downloaded file in temp dir
@@ -575,7 +580,80 @@ ipcMain.handle('download-video', async (event, url, outputDir) => {
         if (videoFile) {
           const tempVideoPath = path.join(tempDir, videoFile);
 
-          // If it's already mp4, just move it
+          if (ipodFormat) {
+            // Download thumbnail for iPod video
+            let hasThumb = false;
+            if (thumbnail) {
+              try {
+                await downloadThumbnail(thumbnail, tempThumb);
+                hasThumb = fs.existsSync(tempThumb);
+                debugLog('Thumbnail downloaded: ' + hasThumb);
+              } catch (e) {
+                debugLog('Thumbnail download failed: ' + e.message);
+              }
+            }
+
+            // Convert to iPod-compatible format: H.264 Baseline, 640x480, AAC
+            // Use .m4v extension which iTunes prefers for video
+            const ipodFile = finalFile.replace(/\.mp4$/, '.m4v');
+
+            // Build ffmpeg args - add thumbnail as attachment if available
+            const ffmpegArgs = [
+              '-i', tempVideoPath,
+              ...(hasThumb ? ['-i', tempThumb] : []),
+              '-map', '0:v',
+              '-map', '0:a',
+              ...(hasThumb ? ['-map', '1:v', '-disposition:v:1', 'attached_pic'] : []),
+              '-vf', 'scale=640:480:force_original_aspect_ratio=decrease,pad=640:480:(ow-iw)/2:(oh-ih)/2,setsar=1',
+              '-c:v:0', 'libx264',
+              '-profile:v', 'baseline',
+              '-level', '3.0',
+              '-preset', 'medium',
+              '-crf', '23',
+              ...(hasThumb ? ['-c:v:1', 'mjpeg'] : []),
+              '-c:a', 'aac',
+              '-b:a', '128k',
+              '-ac', '2',
+              '-metadata', `title=${title}`,
+              '-metadata', `artist=${artist}`,
+              '-movflags', '+faststart',
+              '-y',
+              ipodFile
+            ];
+
+            debugLog('iPod conversion args: ' + ffmpegArgs.join(' '));
+
+            const ffmpegProcess = spawn(ffmpeg, ffmpegArgs, { env: spawnEnv });
+            ffmpegProcess.stderr.on('data', (data) => {
+              const timeMatch = data.toString().match(/time=(\d+):(\d+):(\d+)/);
+              if (timeMatch) {
+                mainWindow.webContents.send('download-progress', {
+                  percent: 99,
+                  title: title,
+                  status: 'Converting for iPod...'
+                });
+              }
+            });
+
+            ffmpegProcess.on('close', (code) => {
+              fs.rmSync(tempDir, { recursive: true, force: true });
+
+              if (code !== 0) {
+                reject(new Error('Failed to convert video for iPod'));
+                return;
+              }
+
+              resolve({
+                success: true,
+                file: ipodFile,
+                title: title,
+                artist: artist
+              });
+            });
+            return;
+          }
+
+          // Regular MP4 - If it's already mp4, just move it
           if (videoFile.endsWith('.mp4')) {
             fs.renameSync(tempVideoPath, finalFile);
           } else {
