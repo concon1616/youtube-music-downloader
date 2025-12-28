@@ -618,12 +618,22 @@
       if (completed.length === 0) return;
       completedSection.style.display = 'block';
 
-      completedList.innerHTML = completed.map(item => `
+      completedList.innerHTML = completed.map((item, idx) => `
         <div class="completed-item">
           <span class="completed-item-name">${escapeHtml(item.artist)} - ${escapeHtml(item.title)}</span>
-          <button class="btn btn-secondary btn-small" onclick="window.api.openFolder('${escapeHtml(item.file)}')">Show in Finder</button>
+          <button class="btn btn-secondary btn-small show-in-finder" data-idx="${idx}">Show in Finder</button>
         </div>
       `).join('');
+
+      // Add click handlers
+      completedList.querySelectorAll('.show-in-finder').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const idx = parseInt(btn.dataset.idx);
+          if (completed[idx] && completed[idx].file) {
+            window.api.openFolder(completed[idx].file);
+          }
+        });
+      });
     }
 
     function showStatus(message, type) {

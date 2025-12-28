@@ -162,15 +162,21 @@ ipcMain.handle('download-track', async (event, url, outputDir) => {
     ];
 
     let infoOutput = '';
+    let infoError = '';
     const infoProcess = spawn(ytdlp, infoArgs);
 
     infoProcess.stdout.on('data', (data) => {
       infoOutput += data.toString();
     });
 
+    infoProcess.stderr.on('data', (data) => {
+      infoError += data.toString();
+    });
+
     infoProcess.on('close', async (infoCode) => {
       if (infoCode !== 0) {
-        reject(new Error('Failed to get track info'));
+        fs.rmSync(tempDir, { recursive: true, force: true });
+        reject(new Error('Failed to get track info: ' + infoError));
         return;
       }
 
@@ -178,6 +184,7 @@ ipcMain.handle('download-track', async (event, url, outputDir) => {
       try {
         info = JSON.parse(infoOutput);
       } catch (e) {
+        fs.rmSync(tempDir, { recursive: true, force: true });
         reject(new Error('Failed to parse track info'));
         return;
       }
@@ -192,7 +199,7 @@ ipcMain.handle('download-track', async (event, url, outputDir) => {
       const safeTitle = title.replace(/[<>:"/\\|?*]/g, '_').substring(0, 100);
       const safeArtist = artist.replace(/[<>:"/\\|?*]/g, '_').substring(0, 50);
 
-      const tempAudio = path.join(tempDir, 'audio.m4a');
+      const tempAudioTemplate = path.join(tempDir, 'audio.%(ext)s');
       const tempThumb = path.join(tempDir, 'thumbnail.jpg');
       const finalFile = path.join(outputDir || downloadPath, `${safeArtist} - ${safeTitle}.m4a`);
 
@@ -202,12 +209,14 @@ ipcMain.handle('download-track', async (event, url, outputDir) => {
         '-x',
         '--audio-format', 'm4a',
         '--audio-quality', '0',
-        '-o', tempAudio,
+        '--ffmpeg-location', path.dirname(ffmpeg),
+        '-o', tempAudioTemplate,
         '--no-playlist',
         '--progress',
         url
       ];
 
+      let dlError = '';
       const downloadProcess = spawn(ytdlp, downloadArgs);
 
       downloadProcess.stdout.on('data', (data) => {
@@ -221,6 +230,7 @@ ipcMain.handle('download-track', async (event, url, outputDir) => {
       });
 
       downloadProcess.stderr.on('data', (data) => {
+        dlError += data.toString();
         const match = data.toString().match(/(\d+\.?\d*)%/);
         if (match) {
           mainWindow.webContents.send('download-progress', {
@@ -232,7 +242,8 @@ ipcMain.handle('download-track', async (event, url, outputDir) => {
 
       downloadProcess.on('close', async (downloadCode) => {
         if (downloadCode !== 0) {
-          reject(new Error('Failed to download audio'));
+          fs.rmSync(tempDir, { recursive: true, force: true });
+          reject(new Error('Failed to download audio: ' + dlError));
           return;
         }
 
@@ -242,6 +253,18 @@ ipcMain.handle('download-track', async (event, url, outputDir) => {
           status: 'Processing...'
         });
 
+        // Find the downloaded audio file
+        const files = fs.readdirSync(tempDir);
+        const audioFile = files.find(f => f.startsWith('audio.') && (f.endsWith('.m4a') || f.endsWith('.mp3') || f.endsWith('.webm') || f.endsWith('.opus') || f.endsWith('.aac')));
+
+        if (!audioFile) {
+          fs.rmSync(tempDir, { recursive: true, force: true });
+          reject(new Error('Downloaded audio file not found. Files in temp: ' + files.join(', ')));
+          return;
+        }
+
+        const tempAudio = path.join(tempDir, audioFile);
+
         // Download thumbnail if available
         let hasThumb = false;
         if (thumbnail) {
@@ -249,18 +272,18 @@ ipcMain.handle('download-track', async (event, url, outputDir) => {
             await downloadThumbnail(thumbnail, tempThumb);
             hasThumb = fs.existsSync(tempThumb);
           } catch (e) {
-            console.log('Thumbnail download failed:', e.message);
+            // Ignore thumbnail errors
           }
         }
 
-        // Use ffmpeg to add metadata and artwork
+        // Use ffmpeg to add metadata and optionally artwork
+        // Use copy codec to avoid re-encoding
         const ffmpegArgs = [
           '-i', tempAudio,
           ...(hasThumb ? ['-i', tempThumb] : []),
           '-map', '0:a',
-          ...(hasThumb ? ['-map', '1:0'] : []),
+          ...(hasThumb ? ['-map', '1:0', '-c:v', 'copy', '-disposition:v', 'attached_pic'] : []),
           '-c:a', 'copy',
-          ...(hasThumb ? ['-c:v', 'mjpeg', '-disposition:v', 'attached_pic'] : []),
           '-metadata', `title=${title}`,
           '-metadata', `artist=${artist}`,
           '-metadata', `album=${album}`,
@@ -268,16 +291,30 @@ ipcMain.handle('download-track', async (event, url, outputDir) => {
           finalFile
         ];
 
+        let ffmpegErr = '';
         const ffmpegProcess = spawn(ffmpeg, ffmpegArgs);
 
+        ffmpegProcess.stderr.on('data', (data) => {
+          ffmpegErr += data.toString();
+        });
+
         ffmpegProcess.on('close', (ffmpegCode) => {
+          // Check if output file was created
+          const outputExists = fs.existsSync(finalFile);
+
+          if (!outputExists && fs.existsSync(tempAudio)) {
+            // If ffmpeg failed to create output, just copy the raw file
+            try {
+              fs.copyFileSync(tempAudio, finalFile);
+            } catch (e) {
+              fs.rmSync(tempDir, { recursive: true, force: true });
+              reject(new Error('Failed to copy audio file'));
+              return;
+            }
+          }
+
           // Clean up temp files
           fs.rmSync(tempDir, { recursive: true, force: true });
-
-          if (ffmpegCode !== 0) {
-            // If ffmpeg fails, try to just copy the file without artwork
-            fs.copyFileSync(tempAudio, finalFile);
-          }
 
           resolve({
             success: true,
@@ -343,6 +380,7 @@ function checkCommand(cmd) {
 ipcMain.handle('download-video', async (event, url, outputDir) => {
   return new Promise((resolve, reject) => {
     const ytdlp = getYtDlpPath();
+    const ffmpeg = getFfmpegPath();
     const tempDir = path.join(app.getPath('temp'), 'ytvideo-' + Date.now());
 
     fs.mkdirSync(tempDir, { recursive: true });
@@ -383,13 +421,15 @@ ipcMain.handle('download-video', async (event, url, outputDir) => {
       const safeTitle = title.replace(/[<>:"/\\|?*]/g, '_').substring(0, 100);
       const safeArtist = artist.replace(/[<>:"/\\|?*]/g, '_').substring(0, 50);
 
+      const tempFile = path.join(tempDir, 'video.%(ext)s');
       const finalFile = path.join(outputDir || downloadPath, `${safeArtist} - ${safeTitle}.mp4`);
 
-      // Download video with best quality
+      // Download video with best quality, using ffmpeg for merging
       const downloadArgs = [
-        '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+        '-f', 'bestvideo+bestaudio/best',
         '--merge-output-format', 'mp4',
-        '-o', finalFile,
+        '--ffmpeg-location', path.dirname(ffmpeg),
+        '-o', tempFile,
         '--no-playlist',
         '--progress',
         url
@@ -418,10 +458,8 @@ ipcMain.handle('download-video', async (event, url, outputDir) => {
       });
 
       downloadProcess.on('close', async (downloadCode) => {
-        // Clean up temp dir
-        fs.rmSync(tempDir, { recursive: true, force: true });
-
         if (downloadCode !== 0) {
+          fs.rmSync(tempDir, { recursive: true, force: true });
           reject(new Error('Failed to download video'));
           return;
         }
@@ -429,8 +467,51 @@ ipcMain.handle('download-video', async (event, url, outputDir) => {
         mainWindow.webContents.send('download-progress', {
           percent: 100,
           title: title,
-          status: 'Complete!'
+          status: 'Processing...'
         });
+
+        // Find the downloaded file in temp dir
+        const files = fs.readdirSync(tempDir);
+        const videoFile = files.find(f => f.endsWith('.mp4') || f.endsWith('.mkv') || f.endsWith('.webm'));
+
+        if (videoFile) {
+          const tempVideoPath = path.join(tempDir, videoFile);
+
+          // If it's already mp4, just move it
+          if (videoFile.endsWith('.mp4')) {
+            fs.renameSync(tempVideoPath, finalFile);
+          } else {
+            // Convert to mp4 using ffmpeg
+            const ffmpegArgs = [
+              '-i', tempVideoPath,
+              '-c:v', 'copy',
+              '-c:a', 'aac',
+              '-y',
+              finalFile
+            ];
+
+            const ffmpegProcess = spawn(ffmpeg, ffmpegArgs);
+            ffmpegProcess.on('close', (code) => {
+              fs.rmSync(tempDir, { recursive: true, force: true });
+
+              if (code !== 0) {
+                reject(new Error('Failed to convert video'));
+                return;
+              }
+
+              resolve({
+                success: true,
+                file: finalFile,
+                title: title,
+                artist: artist
+              });
+            });
+            return;
+          }
+        }
+
+        // Clean up temp dir
+        fs.rmSync(tempDir, { recursive: true, force: true });
 
         resolve({
           success: true,
