@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' https:;">
+  <title>YouTube Music Downloader</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      color: #fff;
+      min-height: 100vh;
+      -webkit-app-region: drag;
+    }
+
+    .container {
+      padding: 60px 40px 40px;
+      max-width: 700px;
+      margin: 0 auto;
+      -webkit-app-region: no-drag;
+    }
+
+    h1 {
+      font-size: 28px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      background: linear-gradient(90deg, #ff6b6b, #feca57);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .subtitle {
+      color: #8892b0;
+      margin-bottom: 30px;
+      font-size: 14px;
+    }
+
+    .input-group {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .url-input {
+      flex: 1;
+      padding: 14px 18px;
+      border: 2px solid #2d3748;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.05);
+      color: #fff;
+      font-size: 15px;
+      transition: all 0.3s;
+    }
+
+    .url-input:focus {
+      outline: none;
+      border-color: #ff6b6b;
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .url-input::placeholder {
+      color: #6b7280;
+    }
+
+    .btn {
+      padding: 14px 28px;
+      border: none;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #ff6b6b 0%, #ee5a5a 100%);
+      color: #fff;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(255, 107, 107, 0.3);
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+      border: 2px solid #2d3748;
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    .settings-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 30px;
+      padding: 12px 16px;
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: 10px;
+    }
+
+    .folder-path {
+      flex: 1;
+      font-size: 13px;
+      color: #8892b0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .folder-icon {
+      width: 20px;
+      height: 20px;
+      fill: #8892b0;
+    }
+
+    .status {
+      padding: 16px;
+      border-radius: 10px;
+      margin-bottom: 20px;
+      display: none;
+    }
+
+    .status.error {
+      display: block;
+      background: rgba(255, 107, 107, 0.15);
+      border: 1px solid rgba(255, 107, 107, 0.3);
+      color: #ff6b6b;
+    }
+
+    .status.success {
+      display: block;
+      background: rgba(46, 213, 115, 0.15);
+      border: 1px solid rgba(46, 213, 115, 0.3);
+      color: #2ed573;
+    }
+
+    .status.warning {
+      display: block;
+      background: rgba(254, 202, 87, 0.15);
+      border: 1px solid rgba(254, 202, 87, 0.3);
+      color: #feca57;
+    }
+
+    .progress-container {
+      display: none;
+      margin-bottom: 20px;
+    }
+
+    .progress-container.active {
+      display: block;
+    }
+
+    .progress-title {
+      font-size: 14px;
+      color: #8892b0;
+      margin-bottom: 10px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .progress-bar {
+      height: 6px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #ff6b6b, #feca57);
+      border-radius: 3px;
+      transition: width 0.3s;
+      width: 0%;
+    }
+
+    .queue-container {
+      margin-top: 30px;
+    }
+
+    .queue-title {
+      font-size: 14px;
+      color: #8892b0;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .queue-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 250px;
+      overflow-y: auto;
+    }
+
+    .queue-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .queue-item-thumb {
+      width: 48px;
+      height: 48px;
+      border-radius: 6px;
+      object-fit: cover;
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .queue-item-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .queue-item-title {
+      font-size: 14px;
+      font-weight: 500;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .queue-item-artist {
+      font-size: 12px;
+      color: #8892b0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .queue-item-status {
+      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .queue-item-status.pending {
+      color: #8892b0;
+    }
+
+    .queue-item-status.downloading {
+      color: #feca57;
+      background: rgba(254, 202, 87, 0.15);
+    }
+
+    .queue-item-status.done {
+      color: #2ed573;
+      background: rgba(46, 213, 115, 0.15);
+    }
+
+    .queue-item-status.error {
+      color: #ff6b6b;
+      background: rgba(255, 107, 107, 0.15);
+    }
+
+    .completed-section {
+      margin-top: 30px;
+    }
+
+    .completed-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      background: rgba(46, 213, 115, 0.08);
+      border-radius: 8px;
+      margin-bottom: 8px;
+    }
+
+    .completed-item-name {
+      font-size: 13px;
+      color: #2ed573;
+    }
+
+    .btn-small {
+      padding: 6px 12px;
+      font-size: 12px;
+      border-radius: 6px;
+    }
+
+    .loading-spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-right: 8px;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 3px;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>YouTube Music Downloader</h1>
+    <p class="subtitle">Download music as high-quality M4A with artwork & metadata</p>
+
+    <div id="dependencyWarning" class="status warning" style="display: none;">
+      Missing dependencies. Please install yt-dlp and ffmpeg:<br>
+      <code style="font-size: 12px; display: block; margin-top: 8px;">brew install yt-dlp ffmpeg</code>
+    </div>
+
+    <div class="input-group">
+      <input type="text" id="urlInput" class="url-input" placeholder="Paste YouTube URL (video or playlist)..." />
+      <button id="downloadBtn" class="btn btn-primary">Download</button>
+    </div>
+
+    <div class="settings-row">
+      <svg class="folder-icon" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
+      </svg>
+      <span id="folderPath" class="folder-path">Loading...</span>
+      <button id="changeFolder" class="btn btn-secondary btn-small">Change</button>
+    </div>
+
+    <div id="status" class="status"></div>
+
+    <div id="progressContainer" class="progress-container">
+      <div id="progressTitle" class="progress-title">Downloading...</div>
+      <div class="progress-bar">
+        <div id="progressFill" class="progress-fill"></div>
+      </div>
+    </div>
+
+    <div id="queueContainer" class="queue-container" style="display: none;">
+      <div class="queue-title">Download Queue</div>
+      <div id="queueList" class="queue-list"></div>
+    </div>
+
+    <div id="completedSection" class="completed-section" style="display: none;">
+      <div class="queue-title">Completed</div>
+      <div id="completedList"></div>
+    </div>
+  </div>
+
+  <script>
+    const urlInput = document.getElementById('urlInput');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const folderPath = document.getElementById('folderPath');
+    const changeFolder = document.getElementById('changeFolder');
+    const status = document.getElementById('status');
+    const progressContainer = document.getElementById('progressContainer');
+    const progressTitle = document.getElementById('progressTitle');
+    const progressFill = document.getElementById('progressFill');
+    const queueContainer = document.getElementById('queueContainer');
+    const queueList = document.getElementById('queueList');
+    const completedSection = document.getElementById('completedSection');
+    const completedList = document.getElementById('completedList');
+    const dependencyWarning = document.getElementById('dependencyWarning');
+
+    let isDownloading = false;
+    let queue = [];
+    let completed = [];
+    let currentDownloadPath = '';
+
+    // Initialize
+    async function init() {
+      currentDownloadPath = await window.api.getDownloadPath();
+      folderPath.textContent = currentDownloadPath;
+
+      const deps = await window.api.checkDependencies();
+      if (!deps.ytdlp || !deps.ffmpeg) {
+        dependencyWarning.style.display = 'block';
+        downloadBtn.disabled = true;
+      }
+    }
+    init();
+
+    // Progress listener
+    window.api.onProgress((data) => {
+      progressFill.style.width = `${data.percent}%`;
+      if (data.status) {
+        progressTitle.textContent = data.status;
+      } else {
+        progressTitle.textContent = `Downloading: ${data.title} (${Math.round(data.percent)}%)`;
+      }
+    });
+
+    // Change folder
+    changeFolder.addEventListener('click', async () => {
+      const newPath = await window.api.selectFolder();
+      if (newPath) {
+        currentDownloadPath = newPath;
+        folderPath.textContent = newPath;
+      }
+    });
+
+    // Download button
+    downloadBtn.addEventListener('click', async () => {
+      const url = urlInput.value.trim();
+      if (!url) {
+        showStatus('Please enter a YouTube URL', 'error');
+        return;
+      }
+
+      if (!url.includes('youtube.com') && !url.includes('youtu.be')) {
+        showStatus('Please enter a valid YouTube URL', 'error');
+        return;
+      }
+
+      downloadBtn.disabled = true;
+      downloadBtn.innerHTML = '<span class="loading-spinner"></span>Fetching...';
+      status.style.display = 'none';
+
+      try {
+        const info = await window.api.getInfo(url);
+
+        if (info.type === 'playlist') {
+          // Add all tracks to queue
+          queue = info.data.map((item, index) => ({
+            id: item.id,
+            url: item.url || `https://www.youtube.com/watch?v=${item.id}`,
+            title: item.title || `Track ${index + 1}`,
+            artist: item.uploader || item.channel || 'Unknown',
+            thumbnail: item.thumbnail || (item.thumbnails && item.thumbnails[0]?.url),
+            status: 'pending'
+          }));
+
+          showQueue();
+          await downloadQueue();
+        } else {
+          // Single track
+          const item = info.data;
+          queue = [{
+            id: item.id,
+            url: url,
+            title: item.title || 'Unknown',
+            artist: item.artist || item.uploader || item.channel || 'Unknown',
+            thumbnail: item.thumbnail || (item.thumbnails && item.thumbnails[item.thumbnails.length - 1]?.url),
+            status: 'pending'
+          }];
+
+          showQueue();
+          await downloadQueue();
+        }
+      } catch (err) {
+        showStatus(`Error: ${err.message}`, 'error');
+        downloadBtn.disabled = false;
+        downloadBtn.textContent = 'Download';
+      }
+    });
+
+    async function downloadQueue() {
+      isDownloading = true;
+      progressContainer.classList.add('active');
+
+      for (let i = 0; i < queue.length; i++) {
+        const item = queue[i];
+        item.status = 'downloading';
+        updateQueueUI();
+
+        try {
+          progressFill.style.width = '0%';
+          progressTitle.textContent = `Downloading: ${item.title}`;
+
+          const result = await window.api.downloadTrack(item.url, currentDownloadPath);
+          item.status = 'done';
+
+          completed.push({
+            ...item,
+            file: result.file,
+            artist: result.artist,
+            album: result.album
+          });
+
+          updateQueueUI();
+          showCompleted();
+        } catch (err) {
+          item.status = 'error';
+          item.error = err.message;
+          updateQueueUI();
+        }
+      }
+
+      isDownloading = false;
+      progressContainer.classList.remove('active');
+      downloadBtn.disabled = false;
+      downloadBtn.textContent = 'Download';
+      urlInput.value = '';
+
+      const successCount = queue.filter(i => i.status === 'done').length;
+      const errorCount = queue.filter(i => i.status === 'error').length;
+
+      if (errorCount === 0) {
+        showStatus(`Successfully downloaded ${successCount} track${successCount > 1 ? 's' : ''}!`, 'success');
+      } else {
+        showStatus(`Downloaded ${successCount} track${successCount > 1 ? 's' : ''}, ${errorCount} failed`, 'warning');
+      }
+
+      setTimeout(() => {
+        queueContainer.style.display = 'none';
+        queue = [];
+      }, 2000);
+    }
+
+    function showQueue() {
+      queueContainer.style.display = 'block';
+      updateQueueUI();
+    }
+
+    function updateQueueUI() {
+      queueList.innerHTML = queue.map(item => `
+        <div class="queue-item">
+          ${item.thumbnail ? `<img class="queue-item-thumb" src="${item.thumbnail}" alt="">` : '<div class="queue-item-thumb"></div>'}
+          <div class="queue-item-info">
+            <div class="queue-item-title">${escapeHtml(item.title)}</div>
+            <div class="queue-item-artist">${escapeHtml(item.artist)}</div>
+          </div>
+          <span class="queue-item-status ${item.status}">${getStatusText(item.status)}</span>
+        </div>
+      `).join('');
+    }
+
+    function showCompleted() {
+      if (completed.length === 0) return;
+      completedSection.style.display = 'block';
+
+      completedList.innerHTML = completed.map(item => `
+        <div class="completed-item">
+          <span class="completed-item-name">${escapeHtml(item.artist)} - ${escapeHtml(item.title)}</span>
+          <button class="btn btn-secondary btn-small" onclick="window.api.openFolder('${escapeHtml(item.file)}')">Show in Finder</button>
+        </div>
+      `).join('');
+    }
+
+    function showStatus(message, type) {
+      status.textContent = message;
+      status.className = 'status ' + type;
+    }
+
+    function getStatusText(s) {
+      const map = {
+        pending: 'Waiting',
+        downloading: 'Downloading',
+        done: 'Done',
+        error: 'Failed'
+      };
+      return map[s] || s;
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/[&<>"']/g, c => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+      }[c]));
+    }
+
+    // Allow paste with keyboard
+    urlInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter' && !isDownloading) {
+        downloadBtn.click();
+      }
+    });
+  </script>
+</body>
+</html>
