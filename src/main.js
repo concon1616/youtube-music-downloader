@@ -723,47 +723,43 @@ ipcMain.handle('download-video', async (event, url, outputDir, ipodFormat = fals
             return;
           }
 
-          // Regular MP4 - If it's already mp4, just move it
-          if (videoFile.endsWith('.mp4')) {
-            fs.renameSync(tempVideoPath, finalFile);
-          } else {
-            // Convert to mp4 using ffmpeg
-            const ffmpegArgs = [
-              '-i', tempVideoPath,
-              '-c:v', 'copy',
-              '-c:a', 'aac_at',
-              '-ar', '44100',
-              '-y',
-              finalFile
-            ];
+          // Re-encode audio to Apple AAC for all video formats
+          const ffmpegArgs = [
+            '-i', tempVideoPath,
+            '-c:v', 'copy',
+            '-c:a', 'aac_at',
+            '-b:a', '256k',
+            '-ar', '44100',
+            '-y',
+            finalFile
+          ];
 
-            debugLog('Regular video conversion args: ' + ffmpegArgs.join(' '));
-            const ffmpegProcess = spawn(ffmpeg, ffmpegArgs, { env: spawnEnv });
-            let ffmpegErr = '';
-            ffmpegProcess.stderr.on('data', (data) => {
-              ffmpegErr += data.toString();
+          debugLog('Regular video conversion args: ' + ffmpegArgs.join(' '));
+          const ffmpegProcess = spawn(ffmpeg, ffmpegArgs, { env: spawnEnv });
+          let ffmpegErr = '';
+          ffmpegProcess.stderr.on('data', (data) => {
+            ffmpegErr += data.toString();
+          });
+          ffmpegProcess.on('close', (code) => {
+            debugLog('Regular video ffmpeg exit code: ' + code);
+            if (code !== 0) {
+              debugLog('Regular video ffmpeg error: ' + ffmpegErr.substring(ffmpegErr.length - 2000));
+            }
+            fs.rmSync(tempDir, { recursive: true, force: true });
+
+            if (code !== 0) {
+              reject(new Error('Failed to convert video'));
+              return;
+            }
+
+            resolve({
+              success: true,
+              file: finalFile,
+              title: title,
+              artist: artist
             });
-            ffmpegProcess.on('close', (code) => {
-              debugLog('Regular video ffmpeg exit code: ' + code);
-              if (code !== 0) {
-                debugLog('Regular video ffmpeg error: ' + ffmpegErr.substring(ffmpegErr.length - 2000));
-              }
-              fs.rmSync(tempDir, { recursive: true, force: true });
-
-              if (code !== 0) {
-                reject(new Error('Failed to convert video'));
-                return;
-              }
-
-              resolve({
-                success: true,
-                file: finalFile,
-                title: title,
-                artist: artist
-              });
-            });
-            return;
-          }
+          });
+          return;
         }
 
         // Clean up temp dir
