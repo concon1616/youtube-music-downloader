@@ -128,6 +128,34 @@ function downloadThumbnail(url, filepath) {
   });
 }
 
+// Convert thumbnail to JPEG for Apple compatibility
+function convertThumbnailToJpeg(inputPath, outputPath, ffmpegPath) {
+  return new Promise((resolve, reject) => {
+    const args = [
+      '-i', inputPath,
+      '-vf', 'scale=600:600:force_original_aspect_ratio=decrease',
+      '-q:v', '2',
+      '-y',
+      outputPath
+    ];
+
+    const process = spawn(ffmpegPath, args, { env: spawnEnv });
+    let stderr = '';
+
+    process.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+
+    process.on('close', (code) => {
+      if (code === 0 && fs.existsSync(outputPath)) {
+        resolve(outputPath);
+      } else {
+        reject(new Error('Failed to convert thumbnail: ' + stderr.substring(0, 200)));
+      }
+    });
+  });
+}
+
 // Get video/playlist info
 ipcMain.handle('get-info', async (event, url) => {
   return new Promise((resolve, reject) => {
@@ -330,13 +358,18 @@ ipcMain.handle('download-track', async (event, url, outputDir) => {
 
         const tempAudio = path.join(tempDir, audioFile);
 
-        // Download thumbnail if available
+        // Download and convert thumbnail if available
         let hasThumb = false;
+        const tempThumbRaw = path.join(tempDir, 'thumbnail_raw');
         if (thumbnail) {
           try {
-            await downloadThumbnail(thumbnail, tempThumb);
+            await downloadThumbnail(thumbnail, tempThumbRaw);
+            // Convert to proper JPEG for Apple compatibility
+            await convertThumbnailToJpeg(tempThumbRaw, tempThumb, ffmpeg);
             hasThumb = fs.existsSync(tempThumb);
+            debugLog('Thumbnail converted for audio: ' + hasThumb);
           } catch (e) {
+            debugLog('Thumbnail error: ' + e.message);
             // Ignore thumbnail errors
           }
         }
@@ -344,8 +377,7 @@ ipcMain.handle('download-track', async (event, url, outputDir) => {
         // Use ffmpeg to add metadata and artwork
         let ffmpegArgs;
         if (hasThumb) {
-          // For m4a with artwork, need specific format
-          // Re-encode to 44.1kHz AAC for iPod compatibility
+          // For m4a with artwork - use proper Apple-compatible embedding
           ffmpegArgs = [
             '-i', tempAudio,
             '-i', tempThumb,
@@ -354,11 +386,12 @@ ipcMain.handle('download-track', async (event, url, outputDir) => {
             '-c:a', 'aac_at',
             '-b:a', '256k',
             '-ar', '44100',
-            '-c:v', 'mjpeg',
+            '-c:v', 'copy',
             '-disposition:v:0', 'attached_pic',
             '-metadata', `title=${title}`,
             '-metadata', `artist=${artist}`,
             '-metadata', `album=${album}`,
+            '-movflags', '+faststart',
             '-y',
             finalFile
           ];
@@ -372,6 +405,7 @@ ipcMain.handle('download-track', async (event, url, outputDir) => {
             '-metadata', `title=${title}`,
             '-metadata', `artist=${artist}`,
             '-metadata', `album=${album}`,
+            '-movflags', '+faststart',
             '-y',
             finalFile
           ];
@@ -669,15 +703,17 @@ ipcMain.handle('download-video', async (event, url, outputDir, ipodFormat = fals
           const tempVideoPath = path.join(tempDir, videoFile);
 
           if (ipodFormat) {
-            // Download thumbnail for iPod video
+            // Download and convert thumbnail for iPod video
             let hasThumb = false;
+            const tempThumbRaw = path.join(tempDir, 'thumbnail_raw');
             if (thumbnail) {
               try {
-                await downloadThumbnail(thumbnail, tempThumb);
+                await downloadThumbnail(thumbnail, tempThumbRaw);
+                await convertThumbnailToJpeg(tempThumbRaw, tempThumb, ffmpeg);
                 hasThumb = fs.existsSync(tempThumb);
-                debugLog('Thumbnail downloaded: ' + hasThumb);
+                debugLog('Thumbnail converted for iPod video: ' + hasThumb);
               } catch (e) {
-                debugLog('Thumbnail download failed: ' + e.message);
+                debugLog('Thumbnail conversion failed: ' + e.message);
               }
             }
 
@@ -698,7 +734,7 @@ ipcMain.handle('download-video', async (event, url, outputDir, ipodFormat = fals
               '-level:v:0', '3.0',
               '-preset', 'medium',
               '-crf', '23',
-              ...(hasThumb ? ['-c:v:1', 'mjpeg'] : []),
+              ...(hasThumb ? ['-c:v:1', 'copy'] : []),
               '-c:a', 'aac_at',
               '-b:a', '128k',
               '-ar', '44100',
@@ -748,15 +784,17 @@ ipcMain.handle('download-video', async (event, url, outputDir, ipodFormat = fals
             return;
           }
 
-          // Download thumbnail for regular video
+          // Download and convert thumbnail for regular video
           let hasThumb = false;
+          const tempThumbRaw = path.join(tempDir, 'thumbnail_raw');
           if (thumbnail) {
             try {
-              await downloadThumbnail(thumbnail, tempThumb);
+              await downloadThumbnail(thumbnail, tempThumbRaw);
+              await convertThumbnailToJpeg(tempThumbRaw, tempThumb, ffmpeg);
               hasThumb = fs.existsSync(tempThumb);
-              debugLog('Regular video thumbnail downloaded: ' + hasThumb);
+              debugLog('Thumbnail converted for regular video: ' + hasThumb);
             } catch (e) {
-              debugLog('Regular video thumbnail download failed: ' + e.message);
+              debugLog('Regular video thumbnail conversion failed: ' + e.message);
             }
           }
 
@@ -768,7 +806,7 @@ ipcMain.handle('download-video', async (event, url, outputDir, ipodFormat = fals
             '-map', '0:a:0',
             ...(hasThumb ? ['-map', '1:v:0', '-disposition:v:1', 'attached_pic'] : []),
             '-c:v:0', 'copy',
-            ...(hasThumb ? ['-c:v:1', 'mjpeg'] : []),
+            ...(hasThumb ? ['-c:v:1', 'copy'] : []),
             '-c:a', 'aac_at',
             '-b:a', '256k',
             '-ar', '44100',
