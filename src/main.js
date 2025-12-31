@@ -748,13 +748,33 @@ ipcMain.handle('download-video', async (event, url, outputDir, ipodFormat = fals
             return;
           }
 
-          // Re-encode audio to Apple AAC for all video formats
+          // Download thumbnail for regular video
+          let hasThumb = false;
+          if (thumbnail) {
+            try {
+              await downloadThumbnail(thumbnail, tempThumb);
+              hasThumb = fs.existsSync(tempThumb);
+              debugLog('Regular video thumbnail downloaded: ' + hasThumb);
+            } catch (e) {
+              debugLog('Regular video thumbnail download failed: ' + e.message);
+            }
+          }
+
+          // Re-encode audio to Apple AAC and embed thumbnail for all video formats
           const ffmpegArgs = [
             '-i', tempVideoPath,
-            '-c:v', 'copy',
+            ...(hasThumb ? ['-i', tempThumb] : []),
+            '-map', '0:v:0',
+            '-map', '0:a:0',
+            ...(hasThumb ? ['-map', '1:v:0', '-disposition:v:1', 'attached_pic'] : []),
+            '-c:v:0', 'copy',
+            ...(hasThumb ? ['-c:v:1', 'mjpeg'] : []),
             '-c:a', 'aac_at',
             '-b:a', '256k',
             '-ar', '44100',
+            '-metadata', `title=${title}`,
+            '-metadata', `artist=${artist}`,
+            '-movflags', '+faststart',
             '-y',
             finalFile
           ];
