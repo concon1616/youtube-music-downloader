@@ -463,6 +463,43 @@
       display: inline-block;
       margin-top: 4px;
     }
+
+    .queue-title-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .queue-title-row .queue-title {
+      margin-bottom: 0;
+    }
+
+    .queue-item-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .btn-stop-item {
+      padding: 4px 10px;
+      font-size: 11px;
+      border-radius: 6px;
+      background: rgba(255, 107, 107, 0.2);
+      color: #ff6b6b;
+      border: 1px solid rgba(255, 107, 107, 0.3);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-stop-item:hover {
+      background: rgba(255, 107, 107, 0.3);
+    }
+
+    .btn-stop-item:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
   </style>
 </head>
 <body>
@@ -479,7 +516,6 @@
       <input type="text" id="urlInput" class="url-input" placeholder="Paste YouTube URL (video or playlist)..." />
       <button id="loadBtn" class="btn btn-secondary">Load</button>
       <button id="downloadBtn" class="btn btn-primary">Download</button>
-      <button id="stopBtn" class="btn btn-stop" style="display: none;">Stop</button>
     </div>
 
     <div class="format-toggle">
@@ -535,7 +571,10 @@
     </div>
 
     <div id="completedSection" class="completed-section" style="display: none;">
-      <div class="queue-title">Completed</div>
+      <div class="queue-title-row">
+        <div class="queue-title">Completed</div>
+        <button id="clearCompleted" class="btn btn-secondary btn-small">Clear</button>
+      </div>
       <div id="completedList"></div>
     </div>
   </div>
@@ -544,7 +583,6 @@
     const urlInput = document.getElementById('urlInput');
     const loadBtn = document.getElementById('loadBtn');
     const downloadBtn = document.getElementById('downloadBtn');
-    const stopBtn = document.getElementById('stopBtn');
     const folderPath = document.getElementById('folderPath');
     const changeFolder = document.getElementById('changeFolder');
     const status = document.getElementById('status');
@@ -555,6 +593,7 @@
     const queueList = document.getElementById('queueList');
     const completedSection = document.getElementById('completedSection');
     const completedList = document.getElementById('completedList');
+    const clearCompletedBtn = document.getElementById('clearCompleted');
     const dependencyWarning = document.getElementById('dependencyWarning');
     const formatAudio = document.getElementById('formatAudio');
     const formatVideo = document.getElementById('formatVideo');
@@ -711,27 +750,11 @@
       loadBtn.textContent = 'Load';
     });
 
-    // Stop button
-    stopBtn.addEventListener('click', async () => {
-      stopBtn.disabled = true;
-      stopBtn.textContent = 'Stopping...';
-
-      try {
-        await window.api.stopDownload();
-        showStatus('Download stopped', 'warning');
-      } catch (err) {
-        console.error('Error stopping download:', err);
-      }
-
-      isDownloading = false;
-      progressContainer.classList.remove('active');
-      stopBtn.style.display = 'none';
-      downloadBtn.style.display = 'inline-block';
-      downloadBtn.disabled = false;
-      downloadBtn.textContent = 'Download';
-      loadBtn.style.display = 'inline-block';
-      stopBtn.disabled = false;
-      stopBtn.textContent = 'Stop';
+    // Clear completed button
+    clearCompletedBtn.addEventListener('click', () => {
+      completed = [];
+      completedList.innerHTML = '';
+      completedSection.style.display = 'none';
     });
 
     // Download button
@@ -748,18 +771,16 @@
       }
 
       downloadBtn.disabled = true;
-      downloadBtn.style.display = 'none';
-      loadBtn.style.display = 'none';
-      stopBtn.style.display = 'inline-block';
-      downloadBtn.innerHTML = '<span class="loading-spinner"></span>Fetching...';
+      downloadBtn.innerHTML = '<span class="loading-spinner"></span>Loading...';
       status.style.display = 'none';
 
       try {
         const info = await window.api.getInfo(url);
+        let newItems = [];
 
         if (info.type === 'playlist') {
           // Add all tracks to queue
-          queue = info.data.map((item, index) => ({
+          newItems = info.data.map((item, index) => ({
             id: item.id,
             url: item.url || `https://www.youtube.com/watch?v=${item.id}`,
             title: item.title || `Track ${index + 1}`,
@@ -767,13 +788,10 @@
             thumbnail: item.thumbnail || (item.thumbnails && item.thumbnails[0]?.url),
             status: 'pending'
           }));
-
-          showQueue();
-          await downloadQueue();
         } else {
           // Single track
           const item = info.data;
-          queue = [{
+          newItems = [{
             id: item.id,
             url: url,
             title: item.title || 'Unknown',
@@ -781,26 +799,40 @@
             thumbnail: item.thumbnail || (item.thumbnails && item.thumbnails[item.thumbnails.length - 1]?.url),
             status: 'pending'
           }];
+        }
 
-          showQueue();
-          await downloadQueue();
+        // Add to existing queue
+        queue = queue.concat(newItems);
+        urlInput.value = '';
+        previewContainer.classList.remove('active');
+        loadedInfo = null;
+
+        showQueue();
+        showStatus(`Added ${newItems.length} item${newItems.length > 1 ? 's' : ''} to queue`, 'success');
+
+        // Start processing if not already downloading
+        if (!isDownloading) {
+          downloadQueue();
         }
       } catch (err) {
         showStatus(`Error: ${err.message}`, 'error');
-        stopBtn.style.display = 'none';
-        downloadBtn.style.display = 'inline-block';
-        downloadBtn.disabled = false;
-        downloadBtn.textContent = 'Download';
-        loadBtn.style.display = 'inline-block';
       }
+
+      downloadBtn.disabled = false;
+      downloadBtn.textContent = 'Download';
     });
 
     async function downloadQueue() {
+      if (isDownloading) return; // Prevent concurrent calls
       isDownloading = true;
       progressContainer.classList.add('active');
 
-      for (let i = 0; i < queue.length; i++) {
-        const item = queue[i];
+      // Process queue items - find next pending item
+      while (true) {
+        const pendingIndex = queue.findIndex(item => item.status === 'pending');
+        if (pendingIndex === -1) break; // No more pending items
+
+        const item = queue[pendingIndex];
         item.status = 'downloading';
         updateQueueUI();
 
@@ -831,30 +863,31 @@
 
       isDownloading = false;
       progressContainer.classList.remove('active');
-      stopBtn.style.display = 'none';
-      downloadBtn.style.display = 'inline-block';
-      downloadBtn.disabled = false;
-      downloadBtn.textContent = 'Download';
-      loadBtn.style.display = 'inline-block';
-      previewContainer.classList.remove('active');
-      loadedInfo = null;
-      urlInput.value = '';
 
+      // Clean up finished items from queue after a short delay
       const successCount = queue.filter(i => i.status === 'done').length;
       const errorCount = queue.filter(i => i.status === 'error').length;
-      const itemType = currentFormat === 'video' ? 'video' : 'track';
-      const itemTypePlural = currentFormat === 'video' ? 'videos' : 'tracks';
 
-      if (errorCount === 0) {
-        showStatus(`Successfully downloaded ${successCount} ${successCount > 1 ? itemTypePlural : itemType}!`, 'success');
-      } else {
-        showStatus(`Downloaded ${successCount} ${successCount > 1 ? itemTypePlural : itemType}, ${errorCount} failed`, 'warning');
+      if (successCount > 0 || errorCount > 0) {
+        const itemType = currentFormat === 'video' ? 'video' : 'track';
+        const itemTypePlural = currentFormat === 'video' ? 'videos' : 'tracks';
+
+        if (errorCount === 0) {
+          showStatus(`Successfully downloaded ${successCount} ${successCount > 1 ? itemTypePlural : itemType}!`, 'success');
+        } else {
+          showStatus(`Downloaded ${successCount} ${successCount > 1 ? itemTypePlural : itemType}, ${errorCount} failed`, 'warning');
+        }
+
+        // Remove completed/errored items from queue after delay
+        setTimeout(() => {
+          queue = queue.filter(item => item.status === 'pending');
+          if (queue.length === 0) {
+            queueContainer.style.display = 'none';
+          } else {
+            updateQueueUI();
+          }
+        }, 2000);
       }
-
-      setTimeout(() => {
-        queueContainer.style.display = 'none';
-        queue = [];
-      }, 2000);
     }
 
     function showQueue() {
@@ -863,16 +896,49 @@
     }
 
     function updateQueueUI() {
-      queueList.innerHTML = queue.map(item => `
+      queueList.innerHTML = queue.map((item, idx) => `
         <div class="queue-item">
           ${item.thumbnail ? `<img class="queue-item-thumb" src="${item.thumbnail}" alt="">` : '<div class="queue-item-thumb"></div>'}
           <div class="queue-item-info">
             <div class="queue-item-title">${escapeHtml(item.title)}</div>
             <div class="queue-item-artist">${escapeHtml(item.artist)}</div>
           </div>
-          <span class="queue-item-status ${item.status}">${getStatusText(item.status)}</span>
+          <div class="queue-item-actions">
+            <span class="queue-item-status ${item.status}">${getStatusText(item.status)}</span>
+            ${item.status === 'downloading' || item.status === 'pending' ? `<button class="btn-stop-item" data-idx="${idx}">Stop</button>` : ''}
+          </div>
         </div>
       `).join('');
+
+      // Add click handlers for stop buttons
+      queueList.querySelectorAll('.btn-stop-item').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const idx = parseInt(btn.dataset.idx);
+          const item = queue[idx];
+          if (!item) return;
+
+          if (item.status === 'downloading') {
+            // Stop current download
+            btn.disabled = true;
+            btn.textContent = 'Stopping...';
+            try {
+              await window.api.stopDownload();
+              item.status = 'error';
+              item.error = 'Cancelled';
+              updateQueueUI();
+            } catch (err) {
+              console.error('Error stopping download:', err);
+            }
+          } else if (item.status === 'pending') {
+            // Remove from queue
+            queue.splice(idx, 1);
+            updateQueueUI();
+            if (queue.length === 0) {
+              queueContainer.style.display = 'none';
+            }
+          }
+        });
+      });
     }
 
     function showCompleted() {
