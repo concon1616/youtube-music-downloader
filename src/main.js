@@ -26,8 +26,17 @@ function debugLog(msg) {
 }
 
 let mainWindow;
-let downloadPath = app.getPath('downloads');
+let downloadPath = path.join(app.getPath('home'), 'Movies'); // Root folder for downloads
 let currentDownloadProcess = null; // Track current download for cancellation
+
+// Ensure download folders exist
+function ensureDownloadFolders() {
+  const audioPath = path.join(downloadPath, 'Audio');
+  const videoPath = path.join(downloadPath, 'Videos');
+  fs.mkdirSync(audioPath, { recursive: true });
+  fs.mkdirSync(videoPath, { recursive: true });
+  return { audioPath, videoPath };
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -178,11 +187,15 @@ ipcMain.handle('download-track', async (event, url, outputDir) => {
     const ffmpeg = getFfmpegPath();
     const tempDir = path.join(app.getPath('temp'), 'ytmusic-' + Date.now());
 
+    // Use Audio subfolder
+    const { audioPath } = ensureDownloadFolders();
+    const finalOutputDir = audioPath;
+
     debugLog('=== DOWNLOAD TRACK DEBUG ===');
     debugLog('yt-dlp path: ' + ytdlp);
     debugLog('ffmpeg path: ' + ffmpeg);
     debugLog('temp dir: ' + tempDir);
-    debugLog('output dir: ' + outputDir);
+    debugLog('output dir: ' + finalOutputDir);
 
     fs.mkdirSync(tempDir, { recursive: true });
 
@@ -234,7 +247,7 @@ ipcMain.handle('download-track', async (event, url, outputDir) => {
 
       const tempAudioTemplate = path.join(tempDir, 'audio.%(ext)s');
       const tempThumb = path.join(tempDir, 'thumbnail.jpg');
-      const finalFile = path.join(outputDir || downloadPath, `${safeArtist} - ${safeTitle}.m4a`);
+      const finalFile = path.join(finalOutputDir, `${safeArtist} - ${safeTitle}.m4a`);
 
       // Download audio - use flexible format selection
       const downloadArgs = [
@@ -446,6 +459,7 @@ ipcMain.handle('select-folder', async () => {
 
   if (!result.canceled && result.filePaths.length > 0) {
     downloadPath = result.filePaths[0];
+    ensureDownloadFolders(); // Create Audio/ and Videos/ subfolders
     return downloadPath;
   }
   return null;
@@ -453,12 +467,18 @@ ipcMain.handle('select-folder', async () => {
 
 // Get current download path
 ipcMain.handle('get-download-path', () => {
+  ensureDownloadFolders(); // Ensure folders exist on startup
   return downloadPath;
 });
 
-// Open folder in Finder
+// Open folder in Finder (show specific file)
 ipcMain.handle('open-folder', async (event, folderPath) => {
   shell.showItemInFolder(folderPath);
+});
+
+// Open root download folder
+ipcMain.handle('open-root-folder', async () => {
+  shell.openPath(downloadPath);
 });
 
 // Check dependencies
@@ -535,8 +555,13 @@ ipcMain.handle('download-video', async (event, url, outputDir, ipodFormat = fals
     const ffmpeg = getFfmpegPath();
     const tempDir = path.join(app.getPath('temp'), 'ytvideo-' + Date.now());
 
+    // Use Videos subfolder
+    const { videoPath } = ensureDownloadFolders();
+    const finalOutputDir = videoPath;
+
     debugLog('=== DOWNLOAD VIDEO DEBUG ===');
     debugLog('iPod format: ' + ipodFormat);
+    debugLog('output dir: ' + finalOutputDir);
 
     fs.mkdirSync(tempDir, { recursive: true });
 
@@ -580,7 +605,7 @@ ipcMain.handle('download-video', async (event, url, outputDir, ipodFormat = fals
 
       const tempFile = path.join(tempDir, 'video.%(ext)s');
       const tempThumb = path.join(tempDir, 'thumbnail.jpg');
-      const finalFile = path.join(outputDir || downloadPath, `${safeArtist} - ${safeTitle}.mp4`);
+      const finalFile = path.join(finalOutputDir, `${safeArtist} - ${safeTitle}.mp4`);
 
       // Download video with best quality, using ffmpeg for merging
       const downloadArgs = [

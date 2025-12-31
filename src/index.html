@@ -545,6 +545,7 @@
         <path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
       </svg>
       <span id="folderPath" class="folder-path">Loading...</span>
+      <button id="openRootFolder" class="btn btn-secondary btn-small">Open</button>
       <button id="changeFolder" class="btn btn-secondary btn-small">Change</button>
     </div>
 
@@ -585,6 +586,7 @@
     const downloadBtn = document.getElementById('downloadBtn');
     const folderPath = document.getElementById('folderPath');
     const changeFolder = document.getElementById('changeFolder');
+    const openRootFolderBtn = document.getElementById('openRootFolder');
     const status = document.getElementById('status');
     const progressContainer = document.getElementById('progressContainer');
     const progressTitle = document.getElementById('progressTitle');
@@ -689,6 +691,11 @@
         currentDownloadPath = newPath;
         folderPath.textContent = newPath;
       }
+    });
+
+    // Open root folder
+    openRootFolderBtn.addEventListener('click', async () => {
+      await window.api.openRootFolder();
     });
 
     // Format duration
@@ -947,7 +954,7 @@
 
       completedList.innerHTML = completed.map((item, idx) => {
         const isAudio = item.file && item.file.endsWith('.m4a');
-        const isVideo = item.file && item.file.endsWith('.mp4');
+        const isVideo = item.file && (item.file.endsWith('.mp4') || item.file.endsWith('.m4v'));
         const showIpodBtn = ipodConnected && (isAudio || isVideo);
         const ipodBtnClass = isVideo ? 'video-to-ipod' : 'copy-to-ipod';
         const ipodBtnText = isVideo ? 'Convert to iPod' : 'Copy to iPod';
@@ -957,7 +964,8 @@
             <span class="completed-item-name">${escapeHtml(item.artist)} - ${escapeHtml(item.title)}</span>
             <div class="completed-buttons">
               ${showIpodBtn ? `<button class="btn btn-ipod btn-small ${ipodBtnClass}" data-idx="${idx}">${ipodBtnText}</button>` : ''}
-              <button class="btn btn-secondary btn-small show-in-finder" data-idx="${idx}">Show in Finder</button>
+              <button class="btn btn-secondary btn-small show-in-finder" data-idx="${idx}">Show File</button>
+              <button class="btn btn-secondary btn-small open-folder" data-idx="${idx}">Open Folder</button>
             </div>
           </div>
         `;
@@ -970,6 +978,13 @@
           if (completed[idx] && completed[idx].file) {
             window.api.openFolder(completed[idx].file);
           }
+        });
+      });
+
+      // Add click handlers for Open Folder (root folder)
+      completedList.querySelectorAll('.open-folder').forEach(btn => {
+        btn.addEventListener('click', () => {
+          window.api.openRootFolder();
         });
       });
 
