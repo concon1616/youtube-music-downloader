@@ -464,10 +464,31 @@
       margin-top: 4px;
     }
 
-    .btn-preview-download {
+    .btn-record {
       flex-shrink: 0;
-      padding: 10px 24px;
       align-self: center;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      border: 2px solid rgba(255, 107, 107, 0.5);
+      background: transparent;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-record:hover {
+      border-color: #ff6b6b;
+      transform: scale(1.1);
+    }
+
+    .btn-record-inner {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: #ff6b6b;
     }
 
     .queue-title-row {
@@ -537,7 +558,9 @@
         <div id="previewDuration" class="preview-duration"></div>
         <div id="previewPlaylist" class="preview-playlist" style="display: none;"></div>
       </div>
-      <button id="previewDownloadBtn" class="btn btn-primary btn-preview-download">Download</button>
+      <button id="previewDownloadBtn" class="btn-record" title="Download">
+        <span class="btn-record-inner"></span>
+      </button>
     </div>
 
     <div id="ipodFormatRow" class="settings-row" style="display: none;">
