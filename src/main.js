@@ -164,7 +164,6 @@ ipcMain.handle('get-info', async (event, url) => {
       '--dump-json',
       '--flat-playlist',
       '--no-warnings',
-      '--cookies-from-browser', 'chrome',
       url
     ];
 
@@ -231,7 +230,6 @@ ipcMain.handle('download-track', async (event, url, outputDir) => {
     const infoArgs = [
       '--dump-json',
       '--no-warnings',
-      '--cookies-from-browser', 'chrome',
       url
     ];
 
@@ -287,7 +285,6 @@ ipcMain.handle('download-track', async (event, url, outputDir) => {
         '-o', tempAudioTemplate,
         '--no-playlist',
         '--progress',
-        '--cookies-from-browser', 'chrome',
         '--no-check-certificates',
         '--extractor-retries', '3',
         url
@@ -603,7 +600,6 @@ ipcMain.handle('download-video', async (event, url, outputDir, ipodFormat = fals
     const infoArgs = [
       '--dump-json',
       '--no-warnings',
-      '--cookies-from-browser', 'chrome',
       url
     ];
 
@@ -649,7 +645,6 @@ ipcMain.handle('download-video', async (event, url, outputDir, ipodFormat = fals
         '-o', tempFile,
         '--no-playlist',
         '--progress',
-        '--cookies-from-browser', 'chrome',
         '--no-check-certificates',
         '--extractor-retries', '3',
         url
