@@ -464,6 +464,12 @@
       margin-top: 4px;
     }
 
+    .btn-preview-download {
+      flex-shrink: 0;
+      padding: 10px 24px;
+      align-self: center;
+    }
+
     .queue-title-row {
       display: flex;
       justify-content: space-between;
@@ -531,6 +537,7 @@
         <div id="previewDuration" class="preview-duration"></div>
         <div id="previewPlaylist" class="preview-playlist" style="display: none;"></div>
       </div>
+      <button id="previewDownloadBtn" class="btn btn-primary btn-preview-download">Download</button>
     </div>
 
     <div id="ipodFormatRow" class="settings-row" style="display: none;">
@@ -618,6 +625,14 @@
 
     const ipodFormatRow = document.getElementById('ipodFormatRow');
     const ipodFormatCheckbox = document.getElementById('ipodFormat');
+    const previewDownloadBtn = document.getElementById('previewDownloadBtn');
+
+    // Preview download button - uses already-loaded info
+    previewDownloadBtn.addEventListener('click', () => {
+      if (loadedInfo) {
+        downloadBtn.click();
+      }
+    });
 
     // Format toggle
     formatAudio.addEventListener('click', () => {
