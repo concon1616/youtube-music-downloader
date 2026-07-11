@@ -17,6 +17,18 @@ const extendedPath = [
 
 const spawnEnv = { ...process.env, PATH: extendedPath };
 
+// Resilience flags for YouTube downloads.
+// Mitigates intermittent "HTTP Error 403: Forbidden" on the media-download step:
+//   - retry the actual data/fragment download instead of failing on the first 403
+//   - fall back across multiple player clients if one client's URLs get rejected
+//     (android_vr has been the most reliable; tv is excluded - it serves DRM formats)
+const YT_RESILIENCE_ARGS = [
+  '--retries', '10',
+  '--fragment-retries', '10',
+  '--file-access-retries', '3',
+  '--extractor-args', 'youtube:player_client=default,web_safari,android_vr',
+];
+
 // Debug logging to file
 const logFile = '/tmp/ytdownloader-debug.log';
 function debugLog(msg) {
@@ -56,7 +68,10 @@ function createWindow() {
   mainWindow.loadFile(path.join(__dirname, 'index.html'));
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  createWindow();
+  autoUpdateYtDlp(); // keep yt-dlp current so YouTube changes don't cause 403s
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
@@ -69,6 +84,55 @@ app.on('activate', () => {
     createWindow();
   }
 });
+
+// Keep yt-dlp up to date in the background.
+// YouTube changes its player/signature scheme constantly; a stale yt-dlp is the
+// #1 cause of "HTTP Error 403: Forbidden" on downloads. Runs at most once per 24h,
+// never blocks the UI, and stays silent on failure (offline, etc.).
+function autoUpdateYtDlp() {
+  try {
+    const stampFile = path.join(app.getPath('userData'), 'ytdlp-update-check');
+    const now = Date.now();
+    if (fs.existsSync(stampFile)) {
+      const last = parseInt(fs.readFileSync(stampFile, 'utf8'), 10) || 0;
+      if (now - last < 24 * 60 * 60 * 1000) {
+        debugLog('yt-dlp auto-update: skipped (checked < 24h ago)');
+        return;
+      }
+    }
+    fs.writeFileSync(stampFile, String(now));
+
+    const ytdlp = getYtDlpPath();
+    let real = ytdlp;
+    try { real = fs.realpathSync(ytdlp); } catch (e) { /* keep original */ }
+    const isBrew = real.includes('/Cellar/') || real.includes('/homebrew/');
+
+    let cmd, args;
+    const brewBin = ['/opt/homebrew/bin/brew', '/usr/local/bin/brew'].find(p => fs.existsSync(p));
+    if (isBrew && brewBin) {
+      cmd = brewBin;
+      args = ['upgrade', 'yt-dlp']; // brew auto-updates taps first, then upgrades if newer exists
+    } else {
+      cmd = ytdlp;
+      args = ['-U', '--no-check-certificates']; // pip/standalone self-update
+    }
+
+    debugLog(`yt-dlp auto-update: running ${cmd} ${args.join(' ')}`);
+    const upd = spawn(cmd, args, { env: spawnEnv });
+    let out = '';
+    upd.stdout.on('data', d => { out += d.toString(); });
+    upd.stderr.on('data', d => { out += d.toString(); });
+    upd.on('close', (code) => {
+      const tail = out.trim().split('\n').slice(-3).join(' | ');
+      debugLog(`yt-dlp auto-update: finished (code ${code}) ${tail}`);
+    });
+    upd.on('error', (err) => {
+      debugLog('yt-dlp auto-update: spawn error - ' + err.message);
+    });
+  } catch (e) {
+    debugLog('yt-dlp auto-update: error - ' + e.message);
+  }
+}
 
 // Find yt-dlp binary
 function getYtDlpPath() {
@@ -287,6 +351,7 @@ ipcMain.handle('download-track', async (event, url, outputDir) => {
         '--progress',
         '--no-check-certificates',
         '--extractor-retries', '3',
+        ...YT_RESILIENCE_ARGS,
         url
       ];
 
@@ -647,6 +712,7 @@ ipcMain.handle('download-video', async (event, url, outputDir, ipodFormat = fals
         '--progress',
         '--no-check-certificates',
         '--extractor-retries', '3',
+        ...YT_RESILIENCE_ARGS,
         url
       ];
 

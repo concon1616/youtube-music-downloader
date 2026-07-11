@@ -2,6 +2,34 @@
 
 All notable changes to YouTube Downloader will be documented in this file.
 
+## [1.4.0] - 2026-07-08 (conversation: `f564511a-bc7e-4d64-8830-61ba45b8855b`)
+
+### Fixed
+- Downloads failing with `HTTP Error 403: Forbidden` on the media-download step
+  (metadata/info step succeeded, then the actual download was rejected). Root cause
+  was a stale system `yt-dlp` (2026.03.17, >90 days old) combined with the app having
+  no retry or client-fallback when YouTube transiently 403s a download URL. Repro'd
+  via `/tmp/ytdownloader-debug.log` (4 consecutive 403s on video `lvrGBYRZllc`).
+
+### Added
+- **Automatic yt-dlp updates.** On launch (throttled to once per 24h, non-blocking,
+  silent on failure) the app now keeps `yt-dlp` current so YouTube player/signature
+  changes don't cause 403s. Uses `brew upgrade yt-dlp` for Homebrew installs, falls
+  back to `yt-dlp -U` otherwise. See `autoUpdateYtDlp()` in `src/main.js`.
+- **Download resilience flags** (`YT_RESILIENCE_ARGS`) applied to both audio and video
+  downloads: `--retries 10 --fragment-retries 10 --file-access-retries 3` plus a
+  multi-client fallback `--extractor-args youtube:player_client=default,web_safari,android_vr`
+  so a single 403 retries / switches clients instead of dead-ending. (`tv` client
+  excluded - it serves DRM-protected formats.)
+
+### Build
+- Fixed `npm run build` failing at the DMG step. electron-builder's `dmgbuild`
+  calls `python`, but modern macOS/Homebrew only ships `python3`, and Python 3.14's
+  bundled `pyexpat` is broken against system libexpat. Added a project-local
+  `build-tools/python` shim (PATH-injected by the build script) that resolves
+  `python` to the first `python3.x` with a working `pyexpat` (prefers 3.12).
+  No global changes. `npm run build` now produces `dist/YouTube Downloader-1.4.0-arm64.dmg`.
+
 ## [1.3.0] - 2025-12-28
 
 ### Added

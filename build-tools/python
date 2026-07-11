@@ -1,0 +1,15 @@
+#!/bin/sh
+# Shim so electron-builder's dmg step (which calls `python` / dmgbuild) works on a
+# machine that only ships `python3`. Two problems this solves:
+#   1. macOS/Homebrew provides `python3`, not `python`.
+#   2. Python 3.14's bundled pyexpat is currently broken against system libexpat
+#      (dmgbuild -> biplist -> plistlib -> pyexpat ImportError), so we must pick an
+#      interpreter whose pyexpat actually imports. 3.12 is known-good.
+# Added to PATH only during `npm run build` (see package.json).
+for c in python3.12 python3.13 python3; do
+  if command -v "$c" >/dev/null 2>&1 && "$c" -c "import xml.parsers.expat" >/dev/null 2>&1; then
+    exec "$c" "$@"
+  fi
+done
+echo "python shim: no python3 with a working pyexpat found (needed for DMG build)" >&2
+exit 1
